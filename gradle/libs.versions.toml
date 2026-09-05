@@ -9,6 +9,11 @@ navigationCompose = "2.8.5"
 coroutines = "1.11.0"
 litertLm = "0.14.0"
 junit = "4.13.2"
+room = "2.8.4"
+ksp = "2.3.0"
+testRunner = "1.6.2"
+testCore = "1.6.1"
+testExtJunit = "1.2.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -29,9 +34,18 @@ kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 
 litertlm-android = { group = "com.google.ai.edge.litertlm", name = "litertlm-android", version.ref = "litertLm" }
 
+room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
+room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
+test-core = { group = "androidx.test", name = "core", version.ref = "testCore" }
+test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "testExtJunit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

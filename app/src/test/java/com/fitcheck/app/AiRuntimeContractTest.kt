@@ -37,7 +37,10 @@ class AiRuntimeContractTest {
         val original = RuntimeSnapshot(
             modelInfo = ModelInfo.Missing,
             initState = InitState.NotInitialized,
+            lastInitMs = null,
             lastInferenceMs = null,
+            lastFirstTokenMs = null,
+            lastTokensEmitted = 0,
             lastError = null
         )
         val copy = original.copy(lastInferenceMs = 42L)
