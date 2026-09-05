@@ -23,12 +23,14 @@ import com.fitcheck.app.ui.screens.dressme.DressMeScreen
 import com.fitcheck.app.ui.screens.wardrobe.WardrobeItemDetailScreen
 import com.fitcheck.app.ui.screens.wardrobe.WardrobeScreen
 import com.fitcheck.app.ui.screens.stylist.AiStylistScreen
+import com.fitcheck.app.ui.screens.gaps.WardrobeGapsScreen
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_STYLE = "style"
 private const val ROUTE_WARDROBE = "wardrobe"
 private const val ROUTE_DRESS_ME = "dress_me"
 private const val ROUTE_WARDROBE_DETAIL = "wardrobe_detail/{itemId}"
+private const val ROUTE_GAPS = "gaps"
 
 @Composable
 fun FitCheckApp() {
@@ -58,6 +60,12 @@ fun FitCheckApp() {
                     icon = { Text("✧") },
                     label = { Text("AI Stylist") }
                 )
+                NavigationBarItem(
+                    selected = currentRoute == ROUTE_GAPS,
+                    onClick = { navController.navigate(ROUTE_GAPS) { launchSingleTop = true } },
+                    icon = { Text("▣") },
+                    label = { Text("Plan") }
+                )
             }
         }
     ) { padding ->
@@ -66,11 +74,12 @@ fun FitCheckApp() {
             startDestination = ROUTE_DRESS_ME,
             modifier = Modifier.padding(padding)
         ) {
-            composable(ROUTE_HOME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else ROUTE_STYLE) { launchSingleTop = true } }) }
-            composable(ROUTE_DRESS_ME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else ROUTE_STYLE) { launchSingleTop = true } }) }
+            composable(ROUTE_HOME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else if (tool == "gaps") ROUTE_GAPS else ROUTE_STYLE) { launchSingleTop = true } }) }
+            composable(ROUTE_DRESS_ME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else if (tool == "gaps") ROUTE_GAPS else ROUTE_STYLE) { launchSingleTop = true } }) }
             composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
             composable(ROUTE_STYLE) { AiStylistScreen() }
+            composable(ROUTE_GAPS) { WardrobeGapsScreen() }
         }
     }
 }

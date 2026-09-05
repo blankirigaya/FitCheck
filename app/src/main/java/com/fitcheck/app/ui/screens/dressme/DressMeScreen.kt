@@ -99,8 +99,8 @@ fun DressMeScreen(onToolClick: (String) -> Unit = {}, vm: DressMeViewModel = vie
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Text("Quick tools", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("◎", "Scan clothes", Modifier.weight(1f)) { onToolClick("scan") }; QuickTool("✣", "What goes with this?", Modifier.weight(1f)) { onToolClick("stylist") } }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("▣", "Should I buy this?", Modifier.weight(1f)) { onToolClick("stylist") }; QuickTool("⊘", "What am I missing?", Modifier.weight(1f)) { onToolClick("wardrobe") } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("◎", "Scan clothes", Modifier.weight(1f)) { onToolClick("wardrobe") }; QuickTool("✣", "What goes with this?", Modifier.weight(1f)) { onToolClick("stylist") } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("▣", "Should I buy this?", Modifier.weight(1f)) { onToolClick("stylist") }; QuickTool("⊘", "What am I missing?", Modifier.weight(1f)) { onToolClick("gaps") } }
     }
 }
 
