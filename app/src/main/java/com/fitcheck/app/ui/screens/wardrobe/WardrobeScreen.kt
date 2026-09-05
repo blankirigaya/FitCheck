@@ -35,6 +35,8 @@ import com.fitcheck.app.ai.InitState
 import java.io.File
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
@@ -44,15 +46,18 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
     fun add(item: WardrobeItemEntity) = viewModelScope.launch { repo.insertItem(item) }
     fun analyzeAndAdd(item: WardrobeItemEntity, onResult: (String?) -> Unit) = viewModelScope.launch {
         runCatching {
-            if (runtime.snapshot().initState !is InitState.Ready) runtime.initialize()
-            val source = item.imageUri ?: error("A clothing photo is required.")
-            val localPath = copyToPrivateStorage(Uri.parse(source))
-            val raw = runtime.analyzeImage(localPath, """
-                Look at this clothing photo. Return ONLY JSON with keys name, category (TOP, BOTTOM, SHOES, ACCESSORY), subcategory, color, material, fit, style, formality (1-5). Identify the single main clothing item.
-            """.trimIndent())
-            val attributes = ClothingVisionParser.parse(raw) ?: error("Gemma could not identify this clothing photo. Try a clearer photo.")
-            repo.insertItem(item.copy(imageUri = localPath, name = attributes.name, category = attributes.category, subcategory = attributes.subcategory, color = attributes.color, material = attributes.material, fit = attributes.fit, style = attributes.style, formality = attributes.formality))
-            onResult(null)
+            val result = withContext(Dispatchers.IO) {
+                if (runtime.snapshot().initState !is InitState.Ready) runtime.initialize()
+                val source = item.imageUri ?: error("A clothing photo is required.")
+                val localPath = copyToPrivateStorage(Uri.parse(source))
+                val raw = runtime.analyzeImage(localPath, """
+                    Look at this clothing photo. Return ONLY JSON with keys name, category (TOP, BOTTOM, SHOES, ACCESSORY), subcategory, color, material, fit, style, formality (1-5). Identify the single main clothing item.
+                """.trimIndent())
+                val attributes = ClothingVisionParser.parse(raw) ?: error("Gemma could not identify this clothing photo. Try a clearer photo.")
+                repo.insertItem(item.copy(imageUri = localPath, name = attributes.name, category = item.category, subcategory = attributes.subcategory, color = attributes.color, material = attributes.material, fit = attributes.fit, style = attributes.style, formality = attributes.formality))
+                true
+            }
+            if (result) onResult(null)
         }.onFailure { onResult(it.message ?: "Could not analyze clothing photo") }
     }
     private fun copyToPrivateStorage(uri: Uri): String {
@@ -65,7 +70,7 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
 
 @Composable
 fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = viewModel()) {
-    val items by vm.items.collectAsStateWithLifecycle(); var showAdd by remember { mutableStateOf(false) }
+    val items by vm.items.collectAsStateWithLifecycle(); var showAdd by remember { mutableStateOf(false) }; var analyzing by remember { mutableStateOf(false) }; var analysisError by remember { mutableStateOf<String?>(null) }
     Scaffold(floatingActionButton = { FloatingActionButton(onClick = { showAdd = true }) { Icon(Icons.Outlined.Add, "Add item") } }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item { Text("WARDROBE", style = MaterialTheme.typography.displaySmall); Text("${items.size} items · local only") }
@@ -76,7 +81,7 @@ fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = vie
             }
         }
     }
-    if (showAdd) AddItemDialog({ showAdd = false }) { item -> vm.analyzeAndAdd(item) { error -> if (error == null) showAdd = false } }
+    if (showAdd) AddItemDialog(onDismiss = { if (!analyzing) showAdd = false }, analyzing = analyzing, error = analysisError) { item -> analysisError = null; analyzing = true; vm.analyzeAndAdd(item) { error -> analyzing = false; analysisError = error; if (error == null) showAdd = false } }
 }
 
 @Composable
@@ -91,7 +96,7 @@ fun WardrobeItemDetailScreen(itemId: Long, onBack: () -> Unit, vm: WardrobeViewM
 
 @Composable private fun Detail(label: String, value: String?) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.labelMedium); Text(value ?: "Not set") } }
 
-@Composable private fun AddItemDialog(onDismiss: () -> Unit, onAdd: (WardrobeItemEntity) -> Unit) {
+@Composable private fun AddItemDialog(onDismiss: () -> Unit, analyzing: Boolean, error: String?, onAdd: (WardrobeItemEntity) -> Unit) {
     var name by remember { mutableStateOf("") }; var color by remember { mutableStateOf("") }; var size by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }; var imageUri by remember { mutableStateOf<String?>(null) }; var category by remember { mutableStateOf(Category.TOP) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it?.toString() }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Add clothing") }, text = { Column(Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -99,8 +104,12 @@ fun WardrobeItemDetailScreen(itemId: Long, onBack: () -> Unit, vm: WardrobeViewM
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name (optional — Gemma identifies it)") }, singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(size, { size = it }, Modifier.weight(1f), label = { Text("Size") }, singleLine = true); OutlinedTextField(price, { price = it }, Modifier.weight(1f), label = { Text("Cost") }, singleLine = true) }
         Text("Category hint (Gemma will verify)", style = MaterialTheme.typography.labelMedium)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { Category.values().forEach { value -> OutlinedButton(onClick = { category = value }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 2.dp)) { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }, maxLines = 1) } } }
-    } }, confirmButton = { Button(enabled = imageUri != null, onClick = { onAdd(WardrobeItemEntity(name = name.ifBlank { "Analyzing…" }.trim(), category = category, size = size.ifBlank { null }, purchasePrice = price.toDoubleOrNull(), imageUri = imageUri)) }) { Text("Analyze & add") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) { Category.values().forEach { value ->
+            val selected = category == value
+            Button(onClick = { category = value }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 1.dp), colors = ButtonDefaults.buttonColors(containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
+        } }
+        if (!error.isNullOrBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+    } }, confirmButton = { Button(enabled = imageUri != null && !analyzing, onClick = { onAdd(WardrobeItemEntity(name = name.ifBlank { "Analyzing…" }.trim(), category = category, size = size.ifBlank { null }, purchasePrice = price.toDoubleOrNull(), imageUri = imageUri)) }) { Text(if (analyzing) "Analyzing…" else "Analyze & add") } }, dismissButton = { TextButton(enabled = !analyzing, onClick = onDismiss) { Text("Cancel") } })
 }
 
 @Composable private fun LocalImage(uri: String?, modifier: Modifier) {
