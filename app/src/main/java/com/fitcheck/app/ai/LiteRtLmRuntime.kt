@@ -110,6 +110,7 @@ class LiteRtLmRuntime(
                 )
 
                 val newConversation = newEngine.createConversation(conversationConfig)
+                Log.i(TAG, "conversation CREATED backend=${labelForBackend(backend)}")
 
                 engine = newEngine
                 conversation = newConversation
@@ -143,20 +144,42 @@ class LiteRtLmRuntime(
 
     override fun generate(prompt: String): Flow<String> = flow {
         val convo = conversation ?: error("Engine not initialized. Call initialize() first.")
+        Log.i(TAG, "inference START promptBytes=${prompt.length}")
         val started = System.nanoTime()
         var firstChunkNs: Long? = null
         var tokens = 0
-        convo.sendMessageAsync(prompt)
-            .map { message -> extractText(message) }
-            .collect { chunk ->
-                if (chunk.isNotEmpty()) {
-                    if (firstChunkNs == null) firstChunkNs = System.nanoTime()
-                    tokens += 1
-                    emit(chunk)
+        var emittedChars = 0L
+        try {
+            convo.sendMessageAsync(prompt)
+                .map { message -> extractText(message) }
+                .collect { chunk ->
+                    if (chunk.isNotEmpty()) {
+                        if (firstChunkNs == null) {
+                            firstChunkNs = System.nanoTime()
+                            Log.i(TAG, "token RECEIVED first chunkLen=${chunk.length}")
+                        }
+                        tokens += 1
+                        emittedChars += chunk.length
+                        if (tokens % 50 == 0) {
+                            Log.i(TAG, "token COUNT tokens=$tokens emittedChars=$emittedChars")
+                        }
+                        emit(chunk)
+                    }
                 }
-            }
+            Log.i(TAG, "inference STREAM COMPLETE tokens=$tokens emittedChars=$emittedChars")
+        } catch (t: Throwable) {
+            Log.e(TAG, "inference FAILED tokens=$tokens emittedChars=$emittedChars: ${t.message}", t)
+            updateSnapshot(
+                snapshotRef.get().copy(
+                    lastTokensEmitted = tokens,
+                    lastError = t.message ?: t::class.java.simpleName
+                )
+            )
+            throw t
+        }
         val elapsedMs = (System.nanoTime() - started) / 1_000_000L
         val firstTokenMs = firstChunkNs?.let { (it - started) / 1_000_000L }
+        Log.i(TAG, "final RESPONSE BUILT tokens=$tokens totalMs=$elapsedMs firstTokenMs=$firstTokenMs")
         updateSnapshot(
             snapshotRef.get().copy(
                 lastInferenceMs = elapsedMs,
@@ -180,10 +203,12 @@ class LiteRtLmRuntime(
 
     override suspend fun close() = withContext(Dispatchers.IO) {
         initMutex.withLock {
+            Log.i(TAG, "conversation CLOSE start")
             runCatching { conversation?.close() }
             runCatching { engine?.close() }
             conversation = null
             engine = null
+            Log.i(TAG, "conversation CLOSE done")
             updateSnapshot(
                 snapshotRef.get().copy(
                     initState = InitState.NotInitialized,

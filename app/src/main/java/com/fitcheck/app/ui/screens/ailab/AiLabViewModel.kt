@@ -96,12 +96,53 @@ class AiLabViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         _state.update { it.copy(response = "", isGenerating = true) }
-        Log.i(TAG, "sendPrompt start  promptBytes=${prompt.length}")
+        Log.i(TAG, "sendPrompt START promptBytes=${prompt.length}")
 
         generateJob = viewModelScope.launch {
-            runtime.generate(prompt)
-                .catch { t ->
-                    Log.e(TAG, "sendPrompt FAILED: ${t.message}", t)
+            var chunks = 0
+            var responseChars = 0
+            try {
+                Log.i(TAG, "inference START awaiting stream")
+                runtime.generate(prompt)
+                    .catch { t ->
+                        Log.e(TAG, "sendPrompt FAILED in stream chunks=$chunks: ${t.message}", t)
+                        _state.update {
+                            it.copy(
+                                isGenerating = false,
+                                snapshot = runtime.snapshot().copy(
+                                    lastError = t.message ?: t::class.java.simpleName
+                                )
+                            )
+                        }
+                        throw t
+                    }
+                    .collect { chunk ->
+                        chunks += 1
+                        responseChars += chunk.length
+                        _state.update { current ->
+                            current.copy(response = current.response + chunk)
+                        }
+                    }
+                Log.i(TAG, "inference STREAM COMPLETE chunks=$chunks responseChars=$responseChars")
+                val s = runtime.snapshot()
+                val decodeMs = ((s.lastInferenceMs ?: 0L) - (s.lastFirstTokenMs ?: 0L)).coerceAtLeast(1L)
+                val tps = if (s.lastFirstTokenMs != null && s.lastTokensEmitted > 0) {
+                    s.lastTokensEmitted.toDouble() * 1000.0 / decodeMs
+                } else 0.0
+                Log.i(TAG, "sendPrompt COMPLETE totalMs=${s.lastInferenceMs} firstTokenMs=${s.lastFirstTokenMs} tokens=${s.lastTokensEmitted} decodeTokPerSec=${"%.3f".format(tps)}")
+                _state.update {
+                    it.copy(
+                        isGenerating = false,
+                        snapshot = runtime.snapshot()
+                    )
+                }
+            } catch (t: Throwable) {
+                // Cancellation is expected on Stop; don't mark it as an error.
+                if (t is kotlinx.coroutines.CancellationException) {
+                    Log.i(TAG, "sendPrompt CANCELLED chunks=$chunks responseChars=$responseChars")
+                    _state.update { it.copy(isGenerating = false) }
+                } else {
+                    Log.e(TAG, "sendPrompt COMPLETE-WITH-ERROR chunks=$chunks: ${t.message}", t)
                     _state.update {
                         it.copy(
                             isGenerating = false,
@@ -111,22 +152,6 @@ class AiLabViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
                 }
-                .collect { chunk ->
-                    _state.update { current ->
-                        current.copy(response = current.response + chunk)
-                    }
-                }
-            val s = runtime.snapshot()
-            val decodeMs = ((s.lastInferenceMs ?: 0L) - (s.lastFirstTokenMs ?: 0L)).coerceAtLeast(1L)
-            val tps = if (s.lastFirstTokenMs != null && s.lastTokensEmitted > 0) {
-                s.lastTokensEmitted.toDouble() * 1000.0 / decodeMs
-            } else 0.0
-            Log.i(TAG, "sendPrompt done  totalMs=${s.lastInferenceMs}  firstTokenMs=${s.lastFirstTokenMs}  tokens=${s.lastTokensEmitted}  decodeTokPerSec=${"%.3f".format(tps)}")
-            _state.update {
-                it.copy(
-                    isGenerating = false,
-                    snapshot = runtime.snapshot()
-                )
             }
         }
     }
