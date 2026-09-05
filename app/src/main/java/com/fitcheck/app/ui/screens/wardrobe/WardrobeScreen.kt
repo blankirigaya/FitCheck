@@ -10,8 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
@@ -71,14 +74,19 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
 
 @Composable
 fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = viewModel()) {
-    val items by vm.items.collectAsStateWithLifecycle(); var showAdd by remember { mutableStateOf(false) }; var analyzing by remember { mutableStateOf(false) }; var analysisError by remember { mutableStateOf<String?>(null) }
+    val items by vm.items.collectAsStateWithLifecycle(); var showAdd by remember { mutableStateOf(false) }; var analyzing by remember { mutableStateOf(false) }; var analysisError by remember { mutableStateOf<String?>(null) }; var filter by remember { mutableStateOf("ALL") }
+    val visible = items.filter { filter == "ALL" || it.category.name == filter }
     Scaffold(floatingActionButton = { FloatingActionButton(onClick = { showAdd = true }) { Icon(Icons.Outlined.Add, "Add item") } }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding).padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { Text("WARDROBE", style = MaterialTheme.typography.displaySmall); Text("${items.size} items · local only") }
-            items(items, key = { it.id }) { item ->
-                Card(Modifier.fillMaxWidth().clickable { onItemClick(item.id) }) { Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    LocalImage(item.imageUri, Modifier.size(82.dp)); Column(Modifier.weight(1f)) { Text(item.name, style = MaterialTheme.typography.titleMedium); Text(item.category.name); Text(item.color ?: "Color not set") }; IconButton(onClick = { vm.delete(item) }) { Icon(Icons.Outlined.Delete, "Delete") }
-                } }
+        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("Wardrobe", style = MaterialTheme.typography.headlineLarge); IconButton(onClick = {}) { Text("⌕", style = MaterialTheme.typography.headlineMedium) } }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("ALL", "TOP", "BOTTOM", "SHOES", "OUTERWEAR", "ACCESSORY").forEach { value -> FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(value.lowercase().replaceFirstChar { it.uppercase() }) }) } }
+            Text("${visible.size} items", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LazyVerticalGrid(columns = GridCells.Fixed(2), state = rememberLazyGridState(), contentPadding = PaddingValues(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
+                items(visible, key = { it.id }) { item ->
+                    Card(Modifier.fillMaxWidth().clickable { onItemClick(item.id) }, shape = MaterialTheme.shapes.large) { Column {
+                        LocalImage(item.imageUri, Modifier.fillMaxWidth().height(150.dp)); Column(Modifier.padding(9.dp)) { Text(item.name, style = MaterialTheme.typography.titleMedium, maxLines = 1); Text("Worn ${item.wearCount}x", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    } }
+                }
             }
         }
     }
@@ -88,15 +96,21 @@ fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = vie
 @Composable
 fun WardrobeItemDetailScreen(itemId: Long, onBack: () -> Unit, vm: WardrobeViewModel = viewModel()) {
     val items by vm.items.collectAsStateWithLifecycle(); val item = items.firstOrNull { it.id == itemId }; var editing by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("‹  Item details", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onBack() })
-        if (item == null) Text("Item not found") else { LocalImage(item.imageUri, Modifier.fillMaxWidth().height(240.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(item.name, style = MaterialTheme.typography.headlineMedium); TextButton(onClick = { editing = true }) { Text("Edit") } }; Text(item.category.name)
-            Detail("COLOR", item.color); Detail("MATERIAL", item.material); Detail("FIT", item.fit); Detail("SIZE", item.size); Detail("PRICE", item.purchasePrice?.let { "₹${"%.0f".format(it)}" }); Detail("TIMES WORN", item.wearCount.toString()); Detail("LAUNDRY", item.laundryStatus.name) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("‹  Back", modifier = Modifier.clickable { onBack() }); if (item != null) TextButton(onClick = { editing = true }) { Text("Edit") } }
+        if (item == null) Text("Item not found") else { LocalImage(item.imageUri, Modifier.fillMaxWidth().height(250.dp)); Text(item.name, style = MaterialTheme.typography.headlineLarge); Text(item.brand ?: item.subcategory ?: item.category.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("COLOR", item.color, Modifier.weight(1f)); SpecCard("MATERIAL", item.material, Modifier.weight(1f)) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("FIT", item.fit, Modifier.weight(1f)); SpecCard("PRICE", item.purchasePrice?.let { "₹${"%.0f".format(it)}" }, Modifier.weight(1f)) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("SIZE", item.size, Modifier.weight(1f)); SpecCard("TIMES WORN", item.wearCount.toString(), Modifier.weight(1f)) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("LAST WORN", item.lastWorn?.let { "Recently" }, Modifier.weight(1f)); SpecCard("AVAILABILITY", if (item.isAvailable) "Clean" else "Unavailable", Modifier.weight(1f)) }
+            Text("Outfit ideas with this", style = MaterialTheme.typography.titleMedium); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { IdeaCard("Campus Smart"); IdeaCard("Weekend Casual") }
+        }
     }
     if (editing && item != null) EditItemDialog(item, onDismiss = { editing = false }) { vm.update(it); editing = false }
 }
 
 @Composable private fun Detail(label: String, value: String?) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.labelMedium); Text(value ?: "Not set") } }
+
+@Composable private fun SpecCard(label: String, value: String?, modifier: Modifier) { Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Column(Modifier.padding(10.dp)) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(value ?: "Not set", style = MaterialTheme.typography.bodyMedium) } } }
+
+@Composable private fun IdeaCard(name: String) { Card(Modifier.width(145.dp)) { Column(Modifier.padding(10.dp)) { Surface(Modifier.fillMaxWidth().height(72.dp), color = MaterialTheme.colorScheme.surface) {}; Spacer(Modifier.height(6.dp)); Text(name, style = MaterialTheme.typography.labelMedium) } } }
 
 @Composable
 private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSave: (WardrobeItemEntity) -> Unit) {
