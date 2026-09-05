@@ -15,6 +15,7 @@ data class TodayContext(
     val time: String,
     val temperatureC: Int? = null,
     val weather: String = "Weather not provided",
+    val location: String = "Location not provided",
     val occasion: String = "Everyday"
 )
 

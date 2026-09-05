@@ -2,9 +2,17 @@ package com.fitcheck.app.ui.screens.dressme
 
 import android.app.Application
 import android.graphics.BitmapFactory
+import android.location.LocationManager
+import android.location.Geocoder
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+import java.net.URL
+import org.json.JSONObject
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -26,6 +34,7 @@ import com.fitcheck.app.data.local.entity.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class DressMeState(val loading: Boolean = false, val context: TodayContext? = null, val recommendation: OutfitRecommendation? = null, val items: List<WardrobeItemEntity> = emptyList(), val error: String? = null)
 
@@ -35,6 +44,21 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
     private val engine = OutfitEngine(graph.wardrobeRepository, graph.wearRepository, graph.stylePreferenceRepository, runtime)
     private val _state = MutableStateFlow(DressMeState())
     val state = _state.asStateFlow()
+    init { loadContext() }
+    private fun loadContext() = viewModelScope.launch {
+        val base = ContextBuilder().build()
+        val weather = withContext(kotlinx.coroutines.Dispatchers.IO) { readWeather(base) }
+        _state.value = _state.value.copy(context = weather)
+    }
+    private fun readWeather(base: TodayContext): TodayContext {
+        val app = getApplication<Application>(); val fine = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED; val coarse = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!fine && !coarse) return base.copy(weather = "Location permission needed")
+        return runCatching {
+            val lm = app.getSystemService(LocationManager::class.java); val loc = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }.maxByOrNull { it.time } ?: return base.copy(weather = "Location unavailable")
+            val json = JSONObject(URL("https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current=temperature_2m,weather_code&temperature_unit=celsius").readText()); val current = json.getJSONObject("current"); val temp = current.getDouble("temperature_2m").toInt(); val code = current.getInt("weather_code"); val city = runCatching { Geocoder(app).getFromLocation(loc.latitude, loc.longitude, 1)?.firstOrNull()?.locality }.getOrNull() ?: "Current location"; base.copy(temperatureC = temp, weather = weatherLabel(code), location = city)
+        }.getOrDefault(base.copy(weather = "Weather unavailable"))
+    }
+    private fun weatherLabel(code: Int) = when (code) { 0 -> "Clear"; 1, 2, 3 -> "Partly cloudy"; 45, 48 -> "Foggy"; in 51..67 -> "Rainy"; in 71..77 -> "Snowy"; in 80..99 -> "Showers"; else -> "Current weather" }
     fun recommend() = viewModelScope.launch {
         _state.value = _state.value.copy(loading = true, error = null)
         runCatching {
@@ -56,13 +80,13 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 @Composable
-fun DressMeScreen(vm: DressMeViewModel = viewModel()) {
+fun DressMeScreen(onToolClick: (String) -> Unit = {}, vm: DressMeViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Spacer(Modifier.height(8.dp))
         Text("YOUR ASSISTANT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Good morning, Alex", style = MaterialTheme.typography.headlineLarge); Text("◉", style = MaterialTheme.typography.headlineMedium) }
-        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Text("☼", style = MaterialTheme.typography.titleLarge); Spacer(Modifier.width(10.dp)); Column { Text("27°C · Humid · College", style = MaterialTheme.typography.labelLarge); Text("Perfect day for breathable casual layers.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Text("☼", style = MaterialTheme.typography.titleLarge); Spacer(Modifier.width(10.dp)); Column { val context = state.context; Text("${context?.temperatureC?.let { "${it}°C" } ?: "—"} · ${context?.weather ?: "Loading weather…"} · ${context?.location ?: "Locating…"}", style = MaterialTheme.typography.labelLarge); Text("Live device context for your day.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
         if (state.items.isEmpty() && !state.loading) {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("Dress Me Today", style = MaterialTheme.typography.titleLarge); Text("Add a top, bottom, and shoes in Wardrobe to get a personal look."); Button(onClick = { vm.recommend() }) { Text("Make outfit for me") } } }
         } else {
@@ -76,12 +100,12 @@ fun DressMeScreen(vm: DressMeViewModel = viewModel()) {
         if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         Text("Quick tools", style = MaterialTheme.typography.titleMedium)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("◎", "Scan clothes", Modifier.weight(1f)); QuickTool("✣", "What goes with this?", Modifier.weight(1f)) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("▣", "Should I buy this?", Modifier.weight(1f)); QuickTool("⊘", "What am I missing?", Modifier.weight(1f)) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("◎", "Scan clothes", Modifier.weight(1f)) { onToolClick("scan") }; QuickTool("✣", "What goes with this?", Modifier.weight(1f)) { onToolClick("stylist") } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("▣", "Should I buy this?", Modifier.weight(1f)) { onToolClick("stylist") }; QuickTool("⊘", "What am I missing?", Modifier.weight(1f)) { onToolClick("wardrobe") } }
     }
 }
 
-@Composable private fun QuickTool(icon: String, label: String, modifier: Modifier) { Card(modifier, shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(12.dp)) { Text(icon, color = MaterialTheme.colorScheme.secondary); Spacer(Modifier.height(6.dp)); Text(label, style = MaterialTheme.typography.labelMedium) } } }
+@Composable private fun QuickTool(icon: String, label: String, modifier: Modifier, onClick: () -> Unit) { Card(modifier.clickable(onClick = onClick), shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(12.dp)) { Text(icon, color = MaterialTheme.colorScheme.secondary); Spacer(Modifier.height(6.dp)); Text(label, style = MaterialTheme.typography.labelMedium) } } }
 
 @Composable private fun LocalImage(path: String?, modifier: Modifier) {
     val bitmap = remember(path) { path?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() } }

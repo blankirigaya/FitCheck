@@ -11,6 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -51,12 +54,26 @@ fun AiStylistScreen(vm: AiStylistViewModel = viewModel()) {
         Spacer(Modifier.height(12.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("✧ AI Stylist", style = MaterialTheme.typography.headlineLarge); Text("ACTIVE NOW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
         Text("Your personal wardrobe assistant", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
-            items(messages) { message -> Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) { Surface(color = if (message.fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.widthIn(max = 300.dp)) { Text(message.text, Modifier.padding(12.dp), color = if (message.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } } }
+            items(messages) { message -> Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) { Surface(color = if (message.fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.widthIn(max = 300.dp)) { MarkdownText(message.text, Modifier.padding(12.dp), if (message.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface) } } }
             if (vm.isThinking) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("Date night", "Make it casual", "What matches?").forEach { suggestion -> AssistChip(onClick = { input = suggestion }, label = { Text(suggestion) }) } }
         Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message AI Stylist…") }, singleLine = true, shape = RoundedCornerShape(18.dp)); Button(onClick = { vm.send(input); input = "" }, enabled = input.isNotBlank() && !vm.isThinking, contentPadding = PaddingValues(horizontal = 16.dp)) { Text("↑") } }
     }
+}
+
+@Composable private fun MarkdownText(value: String, modifier: Modifier, color: androidx.compose.ui.graphics.Color) {
+    val styled = buildAnnotatedString {
+        value.lines().forEachIndexed { index, line ->
+            if (index > 0) append("\n")
+            val content = line.removePrefix("* ").removePrefix("- ")
+            if (line.startsWith("* ") || line.startsWith("- ")) append("• ")
+            var cursor = 0
+            Regex("\\*\\*([^*]+)\\*\\*").findAll(content).forEach { match -> append(content.substring(cursor, match.range.first)); withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) { append(match.groupValues[1]) }; cursor = match.range.last + 1 }
+            append(content.substring(cursor))
+        }
+    }
+    Text(styled, modifier, color = color, style = MaterialTheme.typography.bodyLarge)
 }
 
 private suspend fun kotlinx.coroutines.flow.Flow<String>.foldToString(): String { val text = StringBuilder(); collect { text.append(it) }; return text.toString() }

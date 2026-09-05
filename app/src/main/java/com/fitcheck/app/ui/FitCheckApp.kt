@@ -66,8 +66,8 @@ fun FitCheckApp() {
             startDestination = ROUTE_DRESS_ME,
             modifier = Modifier.padding(padding)
         ) {
-            composable(ROUTE_HOME) { DressMeScreen() }
-            composable(ROUTE_DRESS_ME) { DressMeScreen() }
+            composable(ROUTE_HOME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else ROUTE_STYLE) { launchSingleTop = true } }) }
+            composable(ROUTE_DRESS_ME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else ROUTE_STYLE) { launchSingleTop = true } }) }
             composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
             composable(ROUTE_STYLE) { AiStylistScreen() }
