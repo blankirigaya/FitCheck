@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.litertlm.android)
+    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
 
     // Phase 2: local wardrobe database (Room + KSP codegen, coroutines Flow).
     implementation(libs.room.runtime)

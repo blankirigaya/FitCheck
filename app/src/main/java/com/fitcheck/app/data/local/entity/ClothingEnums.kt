@@ -6,7 +6,8 @@ enum class Category {
     BOTTOM,
     SHOES,
     OUTERWEAR,
-    ACCESSORY
+    ACCESSORY,
+    ETHNIC_WEAR
 }
 
 /** Laundry / wear state of a wardrobe item. */

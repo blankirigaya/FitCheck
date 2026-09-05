@@ -3,6 +3,7 @@ package com.fitcheck.app.ai
 import com.fitcheck.app.data.local.entity.Category
 import com.fitcheck.app.data.local.entity.StylePreferenceEntity
 import com.fitcheck.app.data.local.entity.WardrobeItemEntity
+import com.fitcheck.app.data.UserProfile
 import com.fitcheck.app.data.repository.StylePreferenceRepository
 import com.fitcheck.app.data.repository.WardrobeRepository
 import com.fitcheck.app.data.repository.WearRepository
@@ -16,7 +17,10 @@ data class TodayContext(
     val temperatureC: Int? = null,
     val weather: String = "Weather not provided",
     val location: String = "Location not provided",
-    val occasion: String = "Everyday"
+    val occasion: String = "Everyday",
+    val age: Int? = null,
+    val gender: String? = null,
+    val profession: String? = null
 )
 
 data class OutfitRecommendation(
@@ -25,11 +29,11 @@ data class OutfitRecommendation(
     val occasion: String
 )
 
-class ContextBuilder {
+class ContextBuilder(private val profile: UserProfile? = null) {
     fun build(now: Long = System.currentTimeMillis()): TodayContext {
         val date = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(now))
         val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(now))
-        return TodayContext(date = date, time = time)
+        return TodayContext(date = date, time = time, age = profile?.age, gender = profile?.gender, profession = profile?.profession)
     }
 }
 
@@ -63,10 +67,11 @@ class OutfitEngine(
         val top = candidates.firstOrNull { it.category == Category.TOP }
         val bottom = candidates.firstOrNull { it.category == Category.BOTTOM }
         val shoes = candidates.firstOrNull { it.category == Category.SHOES }
+        val accessory = candidates.firstOrNull { it.category == Category.ACCESSORY }
         require(top != null && bottom != null && shoes != null) {
             "Add at least one top, bottom, and shoes to Dress Me Today."
         }
-        val fallback = listOf(top.id, bottom.id, shoes.id)
+        val fallback = listOf(top.id, bottom.id, shoes.id) + listOfNotNull(accessory?.id)
         val prompt = buildPrompt(context, candidates, preferences.readPreferences(), previousIds)
         val answer = runtime.generate(prompt).foldToString()
         val parsed = parseRecommendation(answer, candidates)
@@ -81,9 +86,10 @@ class OutfitEngine(
     }
 
     private fun buildPrompt(context: TodayContext, items: List<WardrobeItemEntity>, prefs: StylePreferenceEntity, previous: Set<Long>): String = buildString {
-        appendLine("You are Fit Check's offline outfit stylist. Return ONLY this JSON: {\"itemIds\":[number,number,number],\"explanation\":\"one concise sentence\"}.")
-        appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item. Do not invent IDs. Avoid previous IDs: $previous.")
+        appendLine("You are Fit Check's offline outfit stylist. Return ONLY this JSON: {\"itemIds\":[number,number,number,optionalAccessoryId],\"explanation\":\"one concise sentence\"}.")
+        appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item. Add at most one ACCESSORY only when it genuinely complements the look. Do not invent IDs. Avoid previous IDs: $previous.")
         appendLine("Context: ${context.date}, ${context.time}, temperature=${context.temperatureC ?: "unknown"}°C, weather=${context.weather}, location=${context.location}, occasion=${context.occasion}.")
+        appendLine("User context: age=${context.age ?: "unknown"}, gender=${context.gender ?: "unknown"}, profession=${context.profession ?: "unknown"}. Use this respectfully and do not stereotype.")
         appendLine("Preferred styles=${prefs.preferredStyles}, colors=${prefs.preferredColors}.")
         items.forEach { appendLine("id=${it.id}; category=${it.category}; color=${it.color}; style=${it.style}; formality=${it.formality}") }
     }
@@ -98,8 +104,9 @@ class OutfitEngine(
 
     private fun validate(ids: List<Long>, candidates: List<WardrobeItemEntity>): List<Long>? {
         val selected = ids.distinct().mapNotNull { id -> candidates.find { it.id == id } }
-        if (selected.size != 3) return null
-        if (selected.map { it.category }.toSet() != setOf(Category.TOP, Category.BOTTOM, Category.SHOES)) return null
+        if (selected.size !in 3..4) return null
+        if (!selected.any { it.category == Category.TOP } || !selected.any { it.category == Category.BOTTOM } || !selected.any { it.category == Category.SHOES }) return null
+        if (selected.count { it.category == Category.ACCESSORY } > 1 || selected.any { it.category !in setOf(Category.TOP, Category.BOTTOM, Category.SHOES, Category.ACCESSORY) }) return null
         return selected.map { it.id }
     }
 }

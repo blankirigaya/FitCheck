@@ -35,10 +35,12 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fitcheck.app.data.DataGraph
 import com.fitcheck.app.data.local.entity.Category
+import com.fitcheck.app.data.local.entity.LaundryStatus
 import com.fitcheck.app.data.local.entity.WardrobeItemEntity
 import com.fitcheck.app.ai.AiRuntimeProvider
 import com.fitcheck.app.ai.ClothingVisionParser
 import com.fitcheck.app.ai.InitState
+import com.fitcheck.app.ai.removeBackground
 import java.io.File
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -57,11 +59,12 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
                 if (runtime.snapshot().initState !is InitState.Ready) runtime.initialize()
                 val source = item.imageUri ?: error("A clothing photo is required.")
                 val localPath = copyToPrivateStorage(Uri.parse(source))
+                val cleanedPath = removeBackground(localPath) ?: localPath
                 val raw = runtime.analyzeImage(localPath, """
-                    Look at this clothing photo. Return ONLY JSON with keys name, category (TOP, BOTTOM, SHOES, ACCESSORY), subcategory, color, material, fit, style, formality (1-5). Identify the single main clothing item.
+                    Look at this clothing photo. Return ONLY JSON with keys name, category (TOP, BOTTOM, SHOES, OUTERWEAR, ACCESSORY, ETHNIC_WEAR), subcategory, color, material, fit, style, formality (1-5). Identify the single main clothing item. Use ACCESSORY for glasses, sunglasses, eyewear, watches, belts, bags, hats, scarves, jewelry, and other wearable add-ons. Use OUTERWEAR for jackets, coats, blazers, and overshirts. Use ETHNIC_WEAR for traditional clothing such as kurtas, sarees, sherwanis, lehengas, dhotis, and salwar suits.
                 """.trimIndent())
                 val attributes = ClothingVisionParser.parse(raw) ?: error("Gemma could not identify this clothing photo. Try a clearer photo.")
-                repo.insertItem(item.copy(imageUri = localPath, name = attributes.name, category = item.category, subcategory = attributes.subcategory, color = attributes.color, material = attributes.material, fit = attributes.fit, style = attributes.style, formality = attributes.formality))
+                repo.insertItem(item.copy(imageUri = cleanedPath, name = attributes.name, category = attributes.category, subcategory = attributes.subcategory, color = attributes.color, material = attributes.material, fit = attributes.fit, style = attributes.style, formality = attributes.formality))
                 true
             }
             if (result) onResult(null)
@@ -73,6 +76,10 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
         return target.absolutePath
     }
     fun delete(item: WardrobeItemEntity) = viewModelScope.launch { repo.deleteItem(item) }
+    fun deleteAndReturn(item: WardrobeItemEntity, onDone: () -> Unit) = viewModelScope.launch {
+        repo.deleteItem(item)
+        onDone()
+    }
     fun update(item: WardrobeItemEntity) = viewModelScope.launch { repo.updateItem(item) }
 }
 
@@ -83,7 +90,7 @@ fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = vie
     Scaffold(floatingActionButton = { FloatingActionButton(onClick = { showAdd = true }) { Icon(Icons.Outlined.Add, "Add item") } }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("Wardrobe", style = MaterialTheme.typography.headlineLarge); IconButton(onClick = {}) { Text("⌕", style = MaterialTheme.typography.headlineMedium) } }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("ALL", "TOP", "BOTTOM", "SHOES", "OUTERWEAR", "ACCESSORY").forEach { value -> FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(value.lowercase().replaceFirstChar { it.uppercase() }) }) } }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("ALL", "TOP", "BOTTOM", "SHOES", "OUTERWEAR", "ACCESSORY", "ETHNIC_WEAR").forEach { value -> FilterChip(selected = filter == value, onClick = { filter = value }, label = { Text(value.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }) }) } }
             Text("${visible.size} items", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             LazyVerticalGrid(columns = GridCells.Fixed(2), state = rememberLazyGridState(), contentPadding = PaddingValues(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxSize()) {
                 items(visible, key = { it.id }) { item ->
@@ -99,22 +106,42 @@ fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = vie
 
 @Composable
 fun WardrobeItemDetailScreen(itemId: Long, onBack: () -> Unit, vm: WardrobeViewModel = viewModel()) {
-    val items by vm.items.collectAsStateWithLifecycle(); val item = items.firstOrNull { it.id == itemId }; var editing by remember { mutableStateOf(false) }
+    val items by vm.items.collectAsStateWithLifecycle(); val item = items.firstOrNull { it.id == itemId }; var editing by remember { mutableStateOf(false) }; var selectedIdea by remember { mutableStateOf<String?>(null) }; var confirmDelete by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) { Text("‹  Back", modifier = Modifier.clickable { onBack() }); if (item != null) TextButton(onClick = { editing = true }) { Text("Edit") } }
         if (item == null) Text("Item not found") else { LocalImage(item.imageUri, Modifier.fillMaxWidth().height(250.dp)); Text(item.name, style = MaterialTheme.typography.headlineLarge); Text(item.brand ?: item.subcategory ?: item.category.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("COLOR", item.color, Modifier.weight(1f)); SpecCard("MATERIAL", item.material, Modifier.weight(1f)) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("FIT", item.fit, Modifier.weight(1f)); SpecCard("PRICE", item.purchasePrice?.let { "₹${"%.0f".format(it)}" }, Modifier.weight(1f)) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("SIZE", item.size, Modifier.weight(1f)); SpecCard("TIMES WORN", item.wearCount.toString(), Modifier.weight(1f)) }; Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { SpecCard("LAST WORN", item.lastWorn?.let { "Recently" }, Modifier.weight(1f)); SpecCard("AVAILABILITY", if (item.isAvailable) "Clean" else "Unavailable", Modifier.weight(1f)) }
-            Text("Outfit ideas with this", style = MaterialTheme.typography.titleMedium); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { IdeaCard("Campus Smart"); IdeaCard("Weekend Casual") }
+            Text("Outfit ideas with this", style = MaterialTheme.typography.titleMedium); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) { IdeaCard("Campus Smart", buildCombination(item, items), Modifier.weight(1f)) { selectedIdea = "Campus Smart" }; IdeaCard("Weekend Casual", buildCombination(item, items).asReversed(), Modifier.weight(1f)) { selectedIdea = "Weekend Casual" } }
+            Spacer(Modifier.height(16.dp)); OutlinedButton(onClick = { confirmDelete = true }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Remove from wardrobe") }; Spacer(Modifier.height(20.dp))
         }
     }
     if (editing && item != null) EditItemDialog(item, onDismiss = { editing = false }) { vm.update(it); editing = false }
+    if (selectedIdea != null && item != null) OutfitIdeaDialog(selectedIdea!!, buildCombination(item, items), onDismiss = { selectedIdea = null })
+    if (confirmDelete && item != null) AlertDialog(
+        onDismissRequest = { confirmDelete = false },
+        title = { Text("Remove clothing?") },
+        text = { Text("${item.name} will be removed from your wardrobe. This cannot be undone.") },
+        confirmButton = { TextButton(onClick = { vm.deleteAndReturn(item) { onBack() }; confirmDelete = false }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Remove") } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } }
+    )
 }
 
 @Composable private fun Detail(label: String, value: String?) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.labelMedium); Text(value ?: "Not set") } }
 
 @Composable private fun SpecCard(label: String, value: String?, modifier: Modifier) { Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Column(Modifier.padding(10.dp)) { Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(value ?: "Not set", style = MaterialTheme.typography.bodyMedium) } } }
 
-@Composable private fun IdeaCard(name: String) { Card(Modifier.width(145.dp)) { Column(Modifier.padding(10.dp)) { Surface(Modifier.fillMaxWidth().height(72.dp), color = MaterialTheme.colorScheme.surface) {}; Spacer(Modifier.height(6.dp)); Text(name, style = MaterialTheme.typography.labelMedium) } } }
+private fun buildCombination(selected: WardrobeItemEntity, all: List<WardrobeItemEntity>): List<WardrobeItemEntity> {
+    val available = all.filter { it.isAvailable && it.laundryStatus != LaundryStatus.IN_LAUNDRY }
+    val chosen = mutableListOf(selected)
+    listOf(Category.TOP, Category.BOTTOM, Category.SHOES).forEach { category -> if (chosen.none { it.category == category }) available.firstOrNull { it.category == category && it.id != selected.id }?.let(chosen::add) }
+    return chosen.distinctBy { it.id }
+}
+
+@Composable private fun IdeaCard(name: String, combination: List<WardrobeItemEntity>, modifier: Modifier, onClick: () -> Unit) { Card(modifier.clickable(onClick = onClick)) { Column(Modifier.padding(8.dp)) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) { combination.take(3).forEach { LocalImage(it.imageUri, Modifier.weight(1f).height(72.dp)) } }; Spacer(Modifier.height(6.dp)); Text(name, style = MaterialTheme.typography.labelMedium); Text("Tap to view outfit", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+
+@Composable private fun OutfitIdeaDialog(title: String, combination: List<WardrobeItemEntity>, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(title) }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("A combination from your wardrobe", color = MaterialTheme.colorScheme.onSurfaceVariant); combination.forEach { item -> Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) { LocalImage(item.imageUri, Modifier.size(58.dp)); Column { Text(item.name, style = MaterialTheme.typography.titleSmall); Text(item.category.name.lowercase().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } } } }, confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } })
+}
 
 @Composable
 private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSave: (WardrobeItemEntity) -> Unit) {
@@ -154,7 +181,7 @@ private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSa
         Text("Category hint (Gemma will verify)", style = MaterialTheme.typography.labelMedium)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) { Category.values().forEach { value ->
             val selected = category == value
-            val label = when (value) { Category.TOP -> "Top"; Category.BOTTOM -> "Bottom"; Category.SHOES -> "Shoes"; Category.OUTERWEAR -> "Outer"; Category.ACCESSORY -> "Access" }
+            val label = when (value) { Category.TOP -> "Top"; Category.BOTTOM -> "Bottom"; Category.SHOES -> "Shoes"; Category.OUTERWEAR -> "Outer"; Category.ACCESSORY -> "Access"; Category.ETHNIC_WEAR -> "Ethnic" }
             Button(onClick = { category = value }, modifier = Modifier.width(68.dp), contentPadding = PaddingValues(horizontal = 2.dp), colors = ButtonDefaults.buttonColors(containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
         } }
         if (!error.isNullOrBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

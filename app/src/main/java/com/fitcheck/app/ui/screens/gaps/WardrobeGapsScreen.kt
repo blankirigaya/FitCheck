@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fitcheck.app.data.DataGraph
+import com.fitcheck.app.data.UserProfilePreferences
 import com.fitcheck.app.data.local.entity.Category
 import com.fitcheck.app.ai.AiRuntimeProvider
 import com.fitcheck.app.ai.InitState
@@ -79,8 +80,11 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
             appendLine("Look at the user's available wardrobe and suggest up to 3 specific clothing items to buy next.")
             appendLine("Return ONLY a JSON array, with no markdown: [{\"category\":\"TOP|BOTTOM|SHOES|OUTERWEAR|ACCESSORY\",\"item\":\"specific item\",\"reason\":\"short reason\"}]")
             appendLine("Do not repeat an item already owned. Choose varied, concrete items (for example: linen overshirt, brown loafers, knit tie), not category names alone. Do not include prices.")
+            appendLine("Respect the user's gender context: never suggest women's-only pieces such as a women's kurta, lehenga, or dress for a male profile. Use men's or gender-neutral alternatives when appropriate. Do not output a generic category as the item name.")
             appendLine("Available wardrobe:\n$wardrobe")
             appendLine("Calculated gaps and outfit payoff:\n${calculated.joinToString("\n") { "${it.category}: +${it.newOutfits} outfits, ${it.compatible} compatible items" }}")
+            val profile = UserProfilePreferences.read(getApplication())
+            appendLine("User context: age=${profile?.age ?: "unknown"}, gender=${profile?.gender ?: "unknown"}, profession=${profile?.profession ?: "unknown"}. Use respectfully.")
         }
         return runCatching {
             if (runtime.snapshot().initState !is InitState.Ready) runtime.initialize()
@@ -103,13 +107,13 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
                     Category.TOP -> bottoms * shoes
                     Category.BOTTOM -> tops * shoes
                     Category.SHOES -> tops * bottoms
-                    Category.OUTERWEAR, Category.ACCESSORY -> coreOutfits
+                    Category.OUTERWEAR, Category.ACCESSORY, Category.ETHNIC_WEAR -> coreOutfits
                 }
                 val compatible = when (category) {
                     Category.TOP -> bottoms + shoes
                     Category.BOTTOM -> tops + shoes
                     Category.SHOES -> tops + bottoms
-                    Category.OUTERWEAR, Category.ACCESSORY -> tops + bottoms + shoes
+                    Category.OUTERWEAR, Category.ACCESSORY, Category.ETHNIC_WEAR -> tops + bottoms + shoes
                 }
                 val priority = when {
                     newOutfits >= 4 -> "High Priority"
@@ -141,10 +145,18 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
                 if (!used.add(category)) continue
                 val name = item.optString("item").trim().takeIf { it.isNotBlank() } ?: continue
                 val reason = item.optString("reason").trim().takeIf { it.isNotBlank() } ?: base.reason
+                val profile = UserProfilePreferences.read(getApplication())
+                if (profile?.gender.equals("Male", ignoreCase = true) && isWomenOnlySuggestion(name)) continue
                 add(base.copy(title = name, reason = reason))
             }
         }
         return (ai + calculated.filterNot { candidate -> ai.any { it.category == candidate.category } }).take(3)
+    }
+
+    private fun isWomenOnlySuggestion(name: String): Boolean {
+        val value = name.lowercase()
+        return value.contains("women's") || value.contains("womens") || value.contains("women ") ||
+            value.contains("female dress") || value.contains("lehenga")
     }
 }
 
@@ -163,6 +175,7 @@ private fun Category.label(): String = when (this) {
     Category.SHOES -> "Shoes"
     Category.OUTERWEAR -> "Outerwear"
     Category.ACCESSORY -> "Accessories"
+    Category.ETHNIC_WEAR -> "Ethnic Wear"
 }
 
 @Composable

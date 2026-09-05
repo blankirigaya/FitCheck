@@ -9,6 +9,7 @@ import com.fitcheck.app.ai.AiRuntime
 import com.fitcheck.app.ai.AiRuntimeProvider
 import com.fitcheck.app.ai.InitState
 import com.fitcheck.app.ai.RuntimeSnapshot
+import com.fitcheck.app.data.UserProfilePreferences
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -103,7 +104,8 @@ class AiLabViewModel(application: Application) : AndroidViewModel(application) {
             var responseChars = 0
             try {
                 Log.i(TAG, "inference START awaiting stream")
-                runtime.generate(prompt)
+                val profile = UserProfilePreferences.read(getApplication())
+                runtime.generate("$prompt\n\nUser context: age=${profile?.age ?: "unknown"}, gender=${profile?.gender ?: "unknown"}, profession=${profile?.profession ?: "unknown"}. Use this respectfully and do not stereotype.")
                     .catch { t ->
                         Log.e(TAG, "sendPrompt FAILED in stream chunks=$chunks: ${t.message}", t)
                         _state.update {

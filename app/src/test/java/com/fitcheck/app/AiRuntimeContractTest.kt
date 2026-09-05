@@ -4,6 +4,8 @@ import com.fitcheck.app.ai.Accelerator
 import com.fitcheck.app.ai.InitState
 import com.fitcheck.app.ai.ModelInfo
 import com.fitcheck.app.ai.RuntimeSnapshot
+import com.fitcheck.app.ai.ClothingVisionParser
+import com.fitcheck.app.data.local.entity.Category
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -46,5 +48,23 @@ class AiRuntimeContractTest {
         val copy = original.copy(lastInferenceMs = 42L)
         assertNull(original.lastInferenceMs)
         assertEquals(42L, copy.lastInferenceMs)
+    }
+
+    @Test
+    fun `eyewear is classified as an accessory`() {
+        val result = ClothingVisionParser.parse("{\"name\":\"Glasses\",\"category\":\"GLASSES\"}")
+        assertEquals(Category.ACCESSORY, result?.category)
+    }
+
+    @Test
+    fun `jackets are classified as outerwear`() {
+        val result = ClothingVisionParser.parse("{\"name\":\"Jacket\",\"category\":\"JACKET\"}")
+        assertEquals(Category.OUTERWEAR, result?.category)
+    }
+
+    @Test
+    fun `specific garment names override an incorrect top category`() {
+        assertEquals(Category.BOTTOM, ClothingVisionParser.parse("{\"name\":\"Blue pants\",\"category\":\"TOP\"}")?.category)
+        assertEquals(Category.ETHNIC_WEAR, ClothingVisionParser.parse("{\"name\":\"Red kurta\",\"category\":\"TOP\"}")?.category)
     }
 }

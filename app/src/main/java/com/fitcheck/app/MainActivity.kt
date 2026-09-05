@@ -11,6 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.fitcheck.app.ui.FitCheckApp
 import com.fitcheck.app.ui.theme.FitCheckTheme
+import com.fitcheck.app.widget.FitCheckWidget
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -19,6 +20,7 @@ class MainActivity : ComponentActivity() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 42)
         }
+        runCatching { FitCheckWidget.refresh(this) }
         setContent {
             FitCheckTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {

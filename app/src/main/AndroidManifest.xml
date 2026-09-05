@@ -20,6 +20,10 @@
         android:theme="@style/Theme.FitCheck"
         tools:targetApi="34">
 
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="subject_segment" />
+
         <!--
             LiteRT-LM GPU acceleration requires these native libraries to be
             present on the device but not bundled inside the APK. Marked
@@ -50,6 +54,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <receiver android:name=".widget.FitCheckWidget" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/fitcheck_widget_info" />
+        </receiver>
 
     </application>
 </manifest>

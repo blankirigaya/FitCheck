@@ -16,15 +16,33 @@ data class ClothingAttributes(
 object ClothingVisionParser {
     fun parse(raw: String): ClothingAttributes? {
         fun value(key: String) = Regex("\\\"$key\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"", RegexOption.IGNORE_CASE).find(raw)?.groupValues?.get(1)?.trim()
-        val category = when (value("category")?.uppercase()) {
-            "TOP", "SHIRT", "JACKET", "SWEATER", "OUTERWEAR" -> Category.TOP
+        val detectedName = value("name")?.ifBlank { null } ?: return null
+        val detectedSubcategory = value("subcategory")
+        val category = categoryFromAttributes(
+            value("category"),
+            detectedName,
+            detectedSubcategory
+        ) ?: return null
+        val formality = value("formality")?.toIntOrNull()?.coerceIn(1, 5)
+        return ClothingAttributes(detectedName, category, detectedSubcategory, value("color"), value("material"), value("fit"), value("style"), formality)
+    }
+
+    private fun categoryFromAttributes(rawCategory: String?, name: String, subcategory: String?): Category? {
+        val searchable = "$name ${subcategory.orEmpty()}".uppercase()
+        fun containsAny(vararg terms: String) = terms.any { searchable.contains(it) }
+        // Correct common model mistakes before accepting its generic category.
+        if (containsAny("PANTS", "TROUSER", "JEANS", "CHINOS", "SHORTS", "SKIRT", "BOTTOM", "DHOTI", "SALWAR")) return if (containsAny("DHOTI", "SALWAR")) Category.ETHNIC_WEAR else Category.BOTTOM
+        if (containsAny("GLASSES", "EYEWEAR", "SUNGLASSES", "SPECTACLE", "WATCH", "BELT", "BAG", "PURSE", "HAT", "CAP", "SCARF", "JEWELRY", "JEWELLERY", "NECKLACE")) return Category.ACCESSORY
+        if (containsAny("KURTA", "KURTI", "SAREE", "SARI", "SHERWANI", "LEHENGA", "ETHNIC", "TRADITIONAL", "SALWAR")) return Category.ETHNIC_WEAR
+        if (containsAny("JACKET", "COAT", "BLAZER", "CARDIGAN", "TRENCH", "OUTERWEAR", "OVERSHIRT")) return Category.OUTERWEAR
+        return when (rawCategory?.uppercase()) {
+            "TOP", "SHIRT", "T-SHIRT", "BLOUSE", "SWEATER", "HOODIE" -> Category.TOP
             "BOTTOM", "PANTS", "TROUSERS", "SHORTS", "SKIRT" -> Category.BOTTOM
             "SHOES", "SHOE", "FOOTWEAR" -> Category.SHOES
-            "ACCESSORY", "ACCESSORIES" -> Category.ACCESSORY
-            else -> return null
+            "OUTERWEAR", "JACKET", "COAT", "BLAZER", "CARDIGAN", "TRENCHCOAT" -> Category.OUTERWEAR
+            "ACCESSORY", "ACCESSORIES", "GLASSES", "EYEWEAR", "SUNGLASSES", "WATCH", "BELT", "BAG", "HAT", "JEWELRY" -> Category.ACCESSORY
+            "ETHNIC", "ETHNIC_WEAR", "TRADITIONAL", "KURTA", "KURTI", "SAREE", "SARI", "SHERWANI", "LEHENGA", "DHOTI" -> Category.ETHNIC_WEAR
+            else -> null
         }
-        val name = value("name")?.ifBlank { null } ?: return null
-        val formality = value("formality")?.toIntOrNull()?.coerceIn(1, 5)
-        return ClothingAttributes(name, category, value("subcategory"), value("color"), value("material"), value("fit"), value("style"), formality)
     }
 }
