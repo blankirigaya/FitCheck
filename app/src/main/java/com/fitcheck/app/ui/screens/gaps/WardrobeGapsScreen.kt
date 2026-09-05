@@ -33,7 +33,11 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
             Category.BOTTOM to Triple("Bottoms", "Medium Priority", "₹3,500")
         ).mapNotNull { (category, info) ->
             val count = counts[category] ?: 0
-            if (count >= 2) null else WardrobeGap(info.first, category, info.second, info.third, (counts[Category.TOP] ?: 0) * (counts[Category.BOTTOM] ?: 0).coerceAtLeast(1), (items.count { it.category != category }).coerceAtLeast(0), 12)
+            if (count >= 2) null else {
+                val compatible = (items.count { it.category != category }).coerceAtLeast(3)
+                val combinations = ((counts[Category.TOP] ?: 1) * (counts[Category.BOTTOM] ?: 1) * (counts[Category.SHOES] ?: 1)).coerceAtLeast(6)
+                WardrobeGap(info.first, category, info.second, info.third, combinations, compatible, if (category == Category.OUTERWEAR) 30 else 24)
+            }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 }
