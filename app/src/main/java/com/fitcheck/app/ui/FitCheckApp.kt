@@ -1,5 +1,7 @@
 package com.fitcheck.app.ui
 
+import android.net.Uri
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -32,7 +34,7 @@ private const val ROUTE_WARDROBE = "wardrobe"
 private const val ROUTE_DRESS_ME = "dress_me"
 private const val ROUTE_WARDROBE_DETAIL = "wardrobe_detail/{itemId}"
 private const val ROUTE_GAPS = "gaps"
-private const val ROUTE_PURCHASE = "purchase/{category}"
+private const val ROUTE_PURCHASE = "purchase/{category}/{itemTitle}?newOutfits={newOutfits}&compatible={compatible}&itemsUsed={itemsUsed}&reason={reason}"
 
 @Composable
 fun FitCheckApp() {
@@ -81,8 +83,16 @@ fun FitCheckApp() {
             composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
             composable(ROUTE_STYLE) { AiStylistScreen() }
-            composable(ROUTE_GAPS) { WardrobeGapsScreen(onBack = { navController.popBackStack() }, onOpenAnalysis = { gap -> navController.navigate("purchase/${gap.category.name}") }) }
-            composable(ROUTE_PURCHASE) { entry -> PurchaseAnalysisScreen(categoryName = entry.arguments?.getString("category") ?: "OUTERWEAR", onBack = { navController.popBackStack() }) }
+            composable(ROUTE_GAPS) { WardrobeGapsScreen(onBack = { navController.popBackStack() }, onOpenAnalysis = { gap -> navController.navigate("purchase/${gap.category.name}/${Uri.encode(gap.title)}?newOutfits=${gap.newOutfits}&compatible=${gap.compatible}&itemsUsed=${gap.wardrobeItemsUsed}&reason=${Uri.encode(gap.reason)}") }) }
+            composable(ROUTE_PURCHASE) { entry -> PurchaseAnalysisScreen(
+                categoryName = entry.arguments?.getString("category") ?: "OUTERWEAR",
+                suggestedTitle = entry.arguments?.getString("itemTitle"),
+                calculatedNewOutfits = entry.arguments?.getString("newOutfits")?.toIntOrNull(),
+                calculatedCompatible = entry.arguments?.getString("compatible")?.toIntOrNull(),
+                calculatedItemsUsed = entry.arguments?.getString("itemsUsed")?.toIntOrNull(),
+                calculatedReason = entry.arguments?.getString("reason"),
+                onBack = { navController.popBackStack() }
+            ) }
         }
     }
 }
