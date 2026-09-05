@@ -21,10 +21,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.fitcheck.app.ui.screens.ailab.AiLabScreen
+import com.fitcheck.app.ui.screens.dressme.DressMeScreen
+import com.fitcheck.app.ui.screens.wardrobe.WardrobeScreen
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_STYLE = "style"
 private const val ROUTE_AI_LAB = "ai_lab"
+private const val ROUTE_WARDROBE = "wardrobe"
+private const val ROUTE_DRESS_ME = "dress_me"
 
 @Composable
 fun FitCheckApp() {
@@ -37,16 +41,16 @@ fun FitCheckApp() {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
-                    selected = currentRoute == ROUTE_HOME,
-                    onClick = { navController.navigate(ROUTE_HOME) { launchSingleTop = true } },
+                    selected = currentRoute == ROUTE_DRESS_ME,
+                    onClick = { navController.navigate(ROUTE_DRESS_ME) { launchSingleTop = true } },
                     icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = null) },
-                    label = { Text("Home") }
+                    label = { Text("Dress Me") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == ROUTE_STYLE,
-                    onClick = { navController.navigate(ROUTE_STYLE) { launchSingleTop = true } },
+                    onClick = { navController.navigate(ROUTE_WARDROBE) { launchSingleTop = true } },
                     icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = null) },
-                    label = { Text("Style") }
+                    label = { Text("Wardrobe") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == ROUTE_AI_LAB,
@@ -59,11 +63,13 @@ fun FitCheckApp() {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = ROUTE_AI_LAB,
+            startDestination = ROUTE_DRESS_ME,
             modifier = Modifier.padding(padding)
         ) {
-            composable(ROUTE_HOME) { PlaceholderScreen(title = "Home", subtitle = "Phase 1 scaffold") }
-            composable(ROUTE_STYLE) { PlaceholderScreen(title = "Style", subtitle = "Coming next") }
+            composable(ROUTE_HOME) { DressMeScreen() }
+            composable(ROUTE_DRESS_ME) { DressMeScreen() }
+            composable(ROUTE_WARDROBE) { WardrobeScreen() }
+            composable(ROUTE_STYLE) { WardrobeScreen() }
             composable(ROUTE_AI_LAB) { AiLabScreen() }
         }
     }
