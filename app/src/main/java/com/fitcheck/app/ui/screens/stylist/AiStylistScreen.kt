@@ -58,7 +58,8 @@ private fun normalizeStylistResponse(raw: String): String {
         json.optString("advice").takeIf { it.isNotBlank() }?.let { out.append("\n**Customization**\n\n").append(it) }
         if (out.isNotBlank()) return out.toString().trim()
     }
-    return cleaned.replace(Regex("\\{\\s*\\\"?[^{}]+\\\"?\\s*}"), "").trim().ifBlank { "I couldn’t format that suggestion. Try asking about a specific occasion." }
+    return cleaned.replace("{", "").replace("}", "").replace("\\\"", "").trim()
+        .ifBlank { "I couldn’t format that suggestion. Try asking about a specific occasion." }
 }
 
 @Composable
