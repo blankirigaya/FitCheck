@@ -30,6 +30,9 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
     fun recommend() = viewModelScope.launch {
         _state.value = _state.value.copy(loading = true, error = null)
         runCatching {
+            if (runtime.snapshot().initState !is InitState.Ready) {
+                runtime.initialize()
+            }
             val previous = _state.value.recommendation?.itemIds?.toSet().orEmpty()
             val (context, rec) = engine.recommend(previous)
             val items = rec.itemIds.mapNotNull { graph.wardrobeRepository.getItemById(it) }

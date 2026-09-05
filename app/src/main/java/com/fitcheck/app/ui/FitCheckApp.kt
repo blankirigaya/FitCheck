@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.GraphicEq
-import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -20,15 +19,15 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.fitcheck.app.ui.screens.ailab.AiLabScreen
 import com.fitcheck.app.ui.screens.dressme.DressMeScreen
+import com.fitcheck.app.ui.screens.wardrobe.WardrobeItemDetailScreen
 import com.fitcheck.app.ui.screens.wardrobe.WardrobeScreen
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_STYLE = "style"
-private const val ROUTE_AI_LAB = "ai_lab"
 private const val ROUTE_WARDROBE = "wardrobe"
 private const val ROUTE_DRESS_ME = "dress_me"
+private const val ROUTE_WARDROBE_DETAIL = "wardrobe_detail/{itemId}"
 
 @Composable
 fun FitCheckApp() {
@@ -52,12 +51,6 @@ fun FitCheckApp() {
                     icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = null) },
                     label = { Text("Wardrobe") }
                 )
-                NavigationBarItem(
-                    selected = currentRoute == ROUTE_AI_LAB,
-                    onClick = { navController.navigate(ROUTE_AI_LAB) { launchSingleTop = true } },
-                    icon = { Icon(Icons.Outlined.Science, contentDescription = null) },
-                    label = { Text("AI Lab") }
-                )
             }
         }
     ) { padding ->
@@ -68,9 +61,9 @@ fun FitCheckApp() {
         ) {
             composable(ROUTE_HOME) { DressMeScreen() }
             composable(ROUTE_DRESS_ME) { DressMeScreen() }
-            composable(ROUTE_WARDROBE) { WardrobeScreen() }
+            composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
+            composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
             composable(ROUTE_STYLE) { WardrobeScreen() }
-            composable(ROUTE_AI_LAB) { AiLabScreen() }
         }
     }
 }
