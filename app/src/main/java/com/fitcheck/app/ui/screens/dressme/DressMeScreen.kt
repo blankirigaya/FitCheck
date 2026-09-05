@@ -4,6 +4,8 @@ import android.app.Application
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -13,6 +15,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -55,28 +58,30 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
 @Composable
 fun DressMeScreen(vm: DressMeViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
-    Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("DRESS ME TODAY", style = MaterialTheme.typography.displaySmall)
-        Text("A local outfit from your wardrobe")
-        state.context?.let { Text("${it.date} · ${it.time} · ${it.weather}") }
-        if (state.loading) CircularProgressIndicator()
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        if (state.items.isNotEmpty()) {
-            Text("TODAY'S LOOK", style = MaterialTheme.typography.titleLarge)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(state.items) { item -> Card { Column(Modifier.padding(8.dp)) { LocalImage(item.imageUri, Modifier.size(110.dp)); Text(item.category.name); Text(item.name) } } }
-            }
-            state.recommendation?.explanation?.let { Text("WHY THIS WORKS\n$it", style = MaterialTheme.typography.bodyLarge) }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(onClick = vm::recommend) { Text("Try Another") }
-                Button(onClick = vm::wear) { Text("Wear This") }
-            }
-        } else if (!state.loading) {
-            Text("Add at least one top, bottom, and shoes in Wardrobe to get started.")
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Spacer(Modifier.height(8.dp))
+        Text("YOUR ASSISTANT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("Good morning, Alex", style = MaterialTheme.typography.headlineLarge); Text("◉", style = MaterialTheme.typography.headlineMedium) }
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) { Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Text("☼", style = MaterialTheme.typography.titleLarge); Spacer(Modifier.width(10.dp)); Column { Text("27°C · Humid · College", style = MaterialTheme.typography.labelLarge); Text("Perfect day for breathable casual layers.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) } } }
+        if (state.items.isEmpty() && !state.loading) {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("Dress Me Today", style = MaterialTheme.typography.titleLarge); Text("Add a top, bottom, and shoes in Wardrobe to get a personal look."); Button(onClick = { vm.recommend() }) { Text("Make outfit for me") } } }
+        } else {
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Dress Me Today", style = MaterialTheme.typography.titleMedium); Text("✦ AI CHOICE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
+                if (state.items.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) { state.items.forEach { item -> LocalImage(item.imageUri, Modifier.width(110.dp).height(150.dp)) } } else Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                Text("Why this works:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary); Text(state.recommendation?.explanation ?: "Gemma is choosing a look from your wardrobe.", style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { Button(onClick = vm::wear, enabled = state.recommendation != null, modifier = Modifier.weight(1f)) { Text("✓  Wear this") }; OutlinedButton(onClick = vm::recommend, enabled = !state.loading, modifier = Modifier.weight(1f)) { Text("Change outfit") } }
+            } }
         }
-        Button(onClick = vm::recommend, enabled = !state.loading) { Text("Create today's look") }
+        if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        Text("Quick tools", style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("◎", "Scan clothes", Modifier.weight(1f)); QuickTool("✣", "What goes with this?", Modifier.weight(1f)) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { QuickTool("▣", "Should I buy this?", Modifier.weight(1f)); QuickTool("⊘", "What am I missing?", Modifier.weight(1f)) }
     }
 }
+
+@Composable private fun QuickTool(icon: String, label: String, modifier: Modifier) { Card(modifier, shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(12.dp)) { Text(icon, color = MaterialTheme.colorScheme.secondary); Spacer(Modifier.height(6.dp)); Text(label, style = MaterialTheme.typography.labelMedium) } } }
 
 @Composable private fun LocalImage(path: String?, modifier: Modifier) {
     val bitmap = remember(path) { path?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() } }
