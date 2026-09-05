@@ -88,6 +88,11 @@ class LiteRtLmRuntime(
                 val engineConfig = EngineConfig(
                     modelPath = info.absolutePath,
                     backend = backend,
+                    // Multimodal Gemma bundles have a separate vision
+                    // executor. Leaving this unset makes text initialization
+                    // succeed but every first image message fail with
+                    // "Vision executor should not be null".
+                    visionBackend = backend,
                     cacheDir = appContext.cacheDir.absolutePath
                 )
 
