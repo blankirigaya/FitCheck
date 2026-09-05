@@ -8,6 +8,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -92,9 +94,12 @@ fun WardrobeItemDetailScreen(itemId: Long, onBack: () -> Unit, vm: WardrobeViewM
 @Composable private fun AddItemDialog(onDismiss: () -> Unit, onAdd: (WardrobeItemEntity) -> Unit) {
     var name by remember { mutableStateOf("") }; var color by remember { mutableStateOf("") }; var size by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }; var imageUri by remember { mutableStateOf<String?>(null) }; var category by remember { mutableStateOf(Category.TOP) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { imageUri = it?.toString() }
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Add clothing") }, text = { Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-        Button(onClick = { picker.launch("image/*") }) { Text(if (imageUri == null) "Add clothing photo (required)" else "Photo selected") }; OutlinedTextField(name, { name = it }, label = { Text("Optional name — Gemma will identify it") }, singleLine = true); OutlinedTextField(size, { size = it }, label = { Text("Size") }, singleLine = true); OutlinedTextField(price, { price = it }, label = { Text("Cost") }, singleLine = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { Category.values().forEach { Button(onClick = { category = it }) { Text(it.name.take(3)) } } }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Add clothing") }, text = { Column(Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Button(onClick = { picker.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text(if (imageUri == null) "Choose clothing photo (required)" else "Photo selected ✓") }
+        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name (optional — Gemma identifies it)") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(size, { size = it }, Modifier.weight(1f), label = { Text("Size") }, singleLine = true); OutlinedTextField(price, { price = it }, Modifier.weight(1f), label = { Text("Cost") }, singleLine = true) }
+        Text("Category hint (Gemma will verify)", style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { Category.values().forEach { value -> OutlinedButton(onClick = { category = value }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 2.dp)) { Text(value.name.lowercase().replaceFirstChar { it.uppercase() }, maxLines = 1) } } }
     } }, confirmButton = { Button(enabled = imageUri != null, onClick = { onAdd(WardrobeItemEntity(name = name.ifBlank { "Analyzing…" }.trim(), category = category, size = size.ifBlank { null }, purchasePrice = price.toDoubleOrNull(), imageUri = imageUri)) }) { Text("Analyze & add") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
