@@ -23,6 +23,7 @@ import com.fitcheck.app.data.DataGraph
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 data class StylistMessage(val text: String, val fromUser: Boolean)
 
@@ -39,12 +40,25 @@ class AiStylistViewModel(app: Application) : AndroidViewModel(app) {
             runCatching {
                 if (runtime.snapshot().initState !is com.fitcheck.app.ai.InitState.Ready) runtime.initialize()
                 val items = wardrobe.getAvailableItems().take(24).joinToString { "${it.name} (${it.category}, ${it.color ?: "unknown color"})" }
-                val answer = runtime.generate("You are Fit Check AI Stylist. Be warm, concise, and practical. User says: $prompt. Wardrobe: $items. Suggest choices and customization; never invent wardrobe item IDs.").foldToString()
-                _messages.value = _messages.value + StylistMessage(answer.ifBlank { "I couldn’t create a suggestion yet. Try describing the occasion or weather." }, false)
+                val answer = runtime.generate("You are Fit Check AI Stylist. Be warm, concise, and practical. Reply in readable Markdown only, never JSON. Use short headings with **bold**, and bullet points with '-'. User says: $prompt. Wardrobe: $items. Suggest choices and customization; never invent wardrobe item IDs.").foldToString()
+                _messages.value = _messages.value + StylistMessage(normalizeStylistResponse(answer), false)
             }.onFailure { _messages.value = _messages.value + StylistMessage(it.message ?: "I couldn’t reach the local stylist engine.", false) }
             isThinking = false
         }
     }
+}
+
+private fun normalizeStylistResponse(raw: String): String {
+    val cleaned = raw.replace("```json", "").replace("```", "").trim()
+    runCatching {
+        val json = JSONObject(cleaned)
+        val out = StringBuilder()
+        json.optString("explanation").takeIf { it.isNotBlank() }?.let { out.append("**Stylist suggestion**\n\n").append(it).append("\n") }
+        json.optJSONArray("criteria")?.let { array -> out.append("\n**What works**\n"); for (i in 0 until array.length()) out.append("- ").append(array.optString(i)).append("\n") }
+        json.optString("advice").takeIf { it.isNotBlank() }?.let { out.append("\n**Customization**\n\n").append(it) }
+        if (out.isNotBlank()) return out.toString().trim()
+    }
+    return cleaned.replace(Regex("\\{\\s*\\\"?[^{}]+\\\"?\\s*}"), "").trim().ifBlank { "I couldn’t format that suggestion. Try asking about a specific occasion." }
 }
 
 @Composable
