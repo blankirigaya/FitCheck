@@ -2,6 +2,7 @@ package com.fitcheck.app.ui.screens.gaps
 
 import android.app.Application
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -38,19 +39,19 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 @Composable
-fun WardrobeGapsScreen(vm: WardrobeGapsViewModel = viewModel()) {
+fun WardrobeGapsScreen(onBack: () -> Unit = {}, onOpenAnalysis: (WardrobeGap) -> Unit = {}, vm: WardrobeGapsViewModel = viewModel()) {
     val gaps = vm.gaps.collectAsStateWithLifecycle().value
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 16.dp)) {
-        Spacer(Modifier.height(12.dp)); Text("‹  Home", style = MaterialTheme.typography.bodyMedium); Text("Wardrobe Gaps", style = MaterialTheme.typography.headlineLarge); Text("Based on your wardrobe analysis, here are pieces that would unlock the most new outfits.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(12.dp)); Text("‹  Back", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.clickable { onBack() }); Text("Wardrobe Gaps", style = MaterialTheme.typography.headlineLarge); Text("Based on your wardrobe analysis, here are pieces that would unlock the most new outfits.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(10.dp))
         if (gaps.isEmpty()) Text("Your wardrobe has a strong foundation. Add more variety to discover new gaps.")
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 20.dp)) { items(gaps) { gap -> GapCard(gap) } }
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 20.dp)) { items(gaps) { gap -> GapCard(gap) { onOpenAnalysis(gap) } } }
     }
 }
 
-@Composable private fun GapCard(gap: WardrobeGap) {
+@Composable private fun GapCard(gap: WardrobeGap, onExpand: () -> Unit) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column { Text(gap.title, style = MaterialTheme.typography.titleMedium); Text(gap.price, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }; AssistChip(onClick = {}, label = { Text(gap.priority) }) }
         Text("↗  +${gap.newOutfits} new outfits  ·  ${gap.compatible} compatible items  ·  ~${gap.expected} expected impact", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("+  Plan purchase") }
+        OutlinedButton(onClick = onExpand, modifier = Modifier.fillMaxWidth()) { Text("⌄  Expand details") }
     } }
 }

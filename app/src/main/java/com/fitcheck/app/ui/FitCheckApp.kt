@@ -24,6 +24,7 @@ import com.fitcheck.app.ui.screens.wardrobe.WardrobeItemDetailScreen
 import com.fitcheck.app.ui.screens.wardrobe.WardrobeScreen
 import com.fitcheck.app.ui.screens.stylist.AiStylistScreen
 import com.fitcheck.app.ui.screens.gaps.WardrobeGapsScreen
+import com.fitcheck.app.ui.screens.gaps.PurchaseAnalysisScreen
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_STYLE = "style"
@@ -31,6 +32,7 @@ private const val ROUTE_WARDROBE = "wardrobe"
 private const val ROUTE_DRESS_ME = "dress_me"
 private const val ROUTE_WARDROBE_DETAIL = "wardrobe_detail/{itemId}"
 private const val ROUTE_GAPS = "gaps"
+private const val ROUTE_PURCHASE = "purchase/{category}"
 
 @Composable
 fun FitCheckApp() {
@@ -79,7 +81,8 @@ fun FitCheckApp() {
             composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
             composable(ROUTE_STYLE) { AiStylistScreen() }
-            composable(ROUTE_GAPS) { WardrobeGapsScreen() }
+            composable(ROUTE_GAPS) { WardrobeGapsScreen(onBack = { navController.popBackStack() }, onOpenAnalysis = { gap -> navController.navigate("purchase/${gap.category.name}") }) }
+            composable(ROUTE_PURCHASE) { entry -> PurchaseAnalysisScreen(categoryName = entry.arguments?.getString("category") ?: "OUTERWEAR", onBack = { navController.popBackStack() }) }
         }
     }
 }
