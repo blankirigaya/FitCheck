@@ -22,6 +22,7 @@ import androidx.navigation.compose.rememberNavController
 import com.fitcheck.app.ui.screens.dressme.DressMeScreen
 import com.fitcheck.app.ui.screens.wardrobe.WardrobeItemDetailScreen
 import com.fitcheck.app.ui.screens.wardrobe.WardrobeScreen
+import com.fitcheck.app.ui.screens.stylist.AiStylistScreen
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_STYLE = "style"
@@ -46,10 +47,16 @@ fun FitCheckApp() {
                     label = { Text("Dress Me") }
                 )
                 NavigationBarItem(
-                    selected = currentRoute == ROUTE_STYLE,
+                    selected = currentRoute == ROUTE_WARDROBE,
                     onClick = { navController.navigate(ROUTE_WARDROBE) { launchSingleTop = true } },
                     icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = null) },
                     label = { Text("Wardrobe") }
+                )
+                NavigationBarItem(
+                    selected = currentRoute == ROUTE_STYLE,
+                    onClick = { navController.navigate(ROUTE_STYLE) { launchSingleTop = true } },
+                    icon = { Text("✧") },
+                    label = { Text("AI Stylist") }
                 )
             }
         }
@@ -63,7 +70,7 @@ fun FitCheckApp() {
             composable(ROUTE_DRESS_ME) { DressMeScreen() }
             composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
-            composable(ROUTE_STYLE) { WardrobeScreen() }
+            composable(ROUTE_STYLE) { AiStylistScreen() }
         }
     }
 }
