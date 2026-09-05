@@ -66,6 +66,7 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
         return target.absolutePath
     }
     fun delete(item: WardrobeItemEntity) = viewModelScope.launch { repo.deleteItem(item) }
+    fun update(item: WardrobeItemEntity) = viewModelScope.launch { repo.updateItem(item) }
 }
 
 @Composable
@@ -86,15 +87,26 @@ fun WardrobeScreen(onItemClick: (Long) -> Unit = {}, vm: WardrobeViewModel = vie
 
 @Composable
 fun WardrobeItemDetailScreen(itemId: Long, onBack: () -> Unit, vm: WardrobeViewModel = viewModel()) {
-    val items by vm.items.collectAsStateWithLifecycle(); val item = items.firstOrNull { it.id == itemId }
+    val items by vm.items.collectAsStateWithLifecycle(); val item = items.firstOrNull { it.id == itemId }; var editing by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("‹  Item details", style = MaterialTheme.typography.titleLarge, modifier = Modifier.clickable { onBack() })
-        if (item == null) Text("Item not found") else { LocalImage(item.imageUri, Modifier.fillMaxWidth().height(240.dp)); Text(item.name, style = MaterialTheme.typography.headlineMedium); Text(item.category.name)
+        if (item == null) Text("Item not found") else { LocalImage(item.imageUri, Modifier.fillMaxWidth().height(240.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(item.name, style = MaterialTheme.typography.headlineMedium); TextButton(onClick = { editing = true }) { Text("Edit") } }; Text(item.category.name)
             Detail("COLOR", item.color); Detail("MATERIAL", item.material); Detail("FIT", item.fit); Detail("SIZE", item.size); Detail("PRICE", item.purchasePrice?.let { "₹${"%.0f".format(it)}" }); Detail("TIMES WORN", item.wearCount.toString()); Detail("LAUNDRY", item.laundryStatus.name) }
     }
+    if (editing && item != null) EditItemDialog(item, onDismiss = { editing = false }) { vm.update(it); editing = false }
 }
 
 @Composable private fun Detail(label: String, value: String?) { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.labelMedium); Text(value ?: "Not set") } }
+
+@Composable
+private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSave: (WardrobeItemEntity) -> Unit) {
+    var name by remember(item.id) { mutableStateOf(item.name) }; var color by remember(item.id) { mutableStateOf(item.color.orEmpty()) }; var material by remember(item.id) { mutableStateOf(item.material.orEmpty()) }; var fit by remember(item.id) { mutableStateOf(item.fit.orEmpty()) }; var style by remember(item.id) { mutableStateOf(item.style.orEmpty()) }; var brand by remember(item.id) { mutableStateOf(item.brand.orEmpty()) }; var size by remember(item.id) { mutableStateOf(item.size.orEmpty()) }; var price by remember(item.id) { mutableStateOf(item.purchasePrice?.toString().orEmpty()) }; var category by remember(item.id) { mutableStateOf(item.category) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Edit clothing") }, text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name") }, singleLine = true); OutlinedTextField(color, { color = it }, Modifier.fillMaxWidth(), label = { Text("Color") }, singleLine = true); OutlinedTextField(material, { material = it }, Modifier.fillMaxWidth(), label = { Text("Material") }, singleLine = true); OutlinedTextField(fit, { fit = it }, Modifier.fillMaxWidth(), label = { Text("Fit") }, singleLine = true); OutlinedTextField(style, { style = it }, Modifier.fillMaxWidth(), label = { Text("Style") }, singleLine = true); OutlinedTextField(brand, { brand = it }, Modifier.fillMaxWidth(), label = { Text("Brand") }, singleLine = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(size, { size = it }, Modifier.weight(1f), label = { Text("Size") }, singleLine = true); OutlinedTextField(price, { price = it }, Modifier.weight(1f), label = { Text("Cost") }, singleLine = true) }
+        Text("Category", style = MaterialTheme.typography.labelMedium); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) { Category.values().forEach { value -> Button(onClick = { category = value }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 1.dp), colors = ButtonDefaults.buttonColors(containerColor = if (category == value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (category == value) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text(value.name.take(3)) } } }
+    } }, confirmButton = { Button(onClick = { onSave(item.copy(name = name.trim().ifBlank { item.name }, category = category, color = color.trim().ifBlank { null }, material = material.trim().ifBlank { null }, fit = fit.trim().ifBlank { null }, style = style.trim().ifBlank { null }, brand = brand.trim().ifBlank { null }, size = size.trim().ifBlank { null }, purchasePrice = price.toDoubleOrNull())) }) { Text("Save changes") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+}
 
 @Composable private fun AddItemDialog(onDismiss: () -> Unit, analyzing: Boolean, error: String?, onAdd: (WardrobeItemEntity) -> Unit) {
     var name by remember { mutableStateOf("") }; var color by remember { mutableStateOf("") }; var size by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }; var imageUri by remember { mutableStateOf<String?>(null) }; var category by remember { mutableStateOf(Category.TOP) }
