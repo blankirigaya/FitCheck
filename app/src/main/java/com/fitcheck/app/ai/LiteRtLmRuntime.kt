@@ -190,6 +190,15 @@ class LiteRtLmRuntime(
         )
     }.flowOn(Dispatchers.IO)
 
+    override suspend fun analyzeImage(imagePath: String, prompt: String): String = withContext(Dispatchers.IO) {
+        val convo = conversation ?: error("Engine not initialized. Call initialize() first.")
+        val imageFile = File(imagePath)
+        require(imageFile.exists() && imageFile.length() > 0L) { "Selected clothing photo could not be opened." }
+        convo.sendMessageAsync(
+            Contents.of(Content.ImageFile(imageFile.absolutePath), Content.Text(prompt))
+        ).map { message -> extractText(message) }.foldToText()
+    }
+
     /**
      * Walk a streamed [Message] and concatenate any text fragments. The
      * LiteRT-LM API exposes a Message as a list of typed [Content] blocks;
@@ -414,5 +423,11 @@ class LiteRtLmRuntime(
 
     private fun updateSnapshot(next: RuntimeSnapshot) {
         snapshotRef.set(next)
+    }
+
+    private suspend fun Flow<String>.foldToText(): String {
+        val out = StringBuilder()
+        collect { out.append(it) }
+        return out.toString()
     }
 }

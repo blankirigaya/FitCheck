@@ -1,12 +1,17 @@
 package com.fitcheck.app.ui.screens.dressme
 
 import android.app.Application
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,7 +64,7 @@ fun DressMeScreen(vm: DressMeViewModel = viewModel()) {
         if (state.items.isNotEmpty()) {
             Text("TODAY'S LOOK", style = MaterialTheme.typography.titleLarge)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(state.items) { item -> Card { Column(Modifier.padding(16.dp)) { Text(item.category.name); Text(item.name) } } }
+                items(state.items) { item -> Card { Column(Modifier.padding(8.dp)) { LocalImage(item.imageUri, Modifier.size(110.dp)); Text(item.category.name); Text(item.name) } } }
             }
             state.recommendation?.explanation?.let { Text("WHY THIS WORKS\n$it", style = MaterialTheme.typography.bodyLarge) }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -71,4 +76,10 @@ fun DressMeScreen(vm: DressMeViewModel = viewModel()) {
         }
         Button(onClick = vm::recommend, enabled = !state.loading) { Text("Create today's look") }
     }
+}
+
+@Composable private fun LocalImage(path: String?, modifier: Modifier) {
+    val bitmap = remember(path) { path?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() } }
+    if (bitmap != null) Image(bitmap.asImageBitmap(), "Clothing photo", modifier, contentScale = ContentScale.Crop)
+    else Surface(modifier, color = MaterialTheme.colorScheme.surfaceVariant) {}
 }

@@ -41,6 +41,9 @@ interface AiRuntime {
      * snapshot so callers can observe model presence.
      */
     suspend fun probeModel()
+
+    /** Analyze one local image using the multimodal Gemma conversation. */
+    suspend fun analyzeImage(imagePath: String, prompt: String): String
 }
 
 /** Immutable snapshot of the runtime's current state for UI rendering. */
