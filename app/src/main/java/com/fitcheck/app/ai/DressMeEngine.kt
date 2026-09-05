@@ -57,8 +57,8 @@ class OutfitEngine(
     private val contextBuilder: ContextBuilder = ContextBuilder(),
     private val selector: CandidateSelector = CandidateSelector()
 ) {
-    suspend fun recommend(previousIds: Set<Long> = emptySet()): Pair<TodayContext, OutfitRecommendation> {
-        val context = contextBuilder.build()
+    suspend fun recommend(previousIds: Set<Long> = emptySet(), liveContext: TodayContext? = null): Pair<TodayContext, OutfitRecommendation> {
+        val context = liveContext ?: contextBuilder.build()
         val candidates = selector.select(wardrobe, wear)
         val top = candidates.firstOrNull { it.category == Category.TOP }
         val bottom = candidates.firstOrNull { it.category == Category.BOTTOM }
@@ -83,7 +83,7 @@ class OutfitEngine(
     private fun buildPrompt(context: TodayContext, items: List<WardrobeItemEntity>, prefs: StylePreferenceEntity, previous: Set<Long>): String = buildString {
         appendLine("You are Fit Check's offline outfit stylist. Return ONLY this JSON: {\"itemIds\":[number,number,number],\"explanation\":\"one concise sentence\"}.")
         appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item. Do not invent IDs. Avoid previous IDs: $previous.")
-        appendLine("Context: ${context.date}, ${context.time}, ${context.weather}, occasion=${context.occasion}.")
+        appendLine("Context: ${context.date}, ${context.time}, temperature=${context.temperatureC ?: "unknown"}°C, weather=${context.weather}, location=${context.location}, occasion=${context.occasion}.")
         appendLine("Preferred styles=${prefs.preferredStyles}, colors=${prefs.preferredColors}.")
         items.forEach { appendLine("id=${it.id}; category=${it.category}; color=${it.color}; style=${it.style}; formality=${it.formality}") }
     }

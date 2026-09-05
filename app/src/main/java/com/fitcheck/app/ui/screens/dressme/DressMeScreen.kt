@@ -44,12 +44,9 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
     private val engine = OutfitEngine(graph.wardrobeRepository, graph.wearRepository, graph.stylePreferenceRepository, runtime)
     private val _state = MutableStateFlow(DressMeState())
     val state = _state.asStateFlow()
-    init { loadContext() }
-    private fun loadContext() = viewModelScope.launch {
-        val base = ContextBuilder().build()
-        val weather = withContext(kotlinx.coroutines.Dispatchers.IO) { readWeather(base) }
-        _state.value = _state.value.copy(context = weather)
-    }
+    init { refreshContext() }
+    private fun refreshContext() = viewModelScope.launch { _state.value = _state.value.copy(context = fetchLiveContext()) }
+    private suspend fun fetchLiveContext(): TodayContext = withContext(kotlinx.coroutines.Dispatchers.IO) { readWeather(ContextBuilder().build()) }
     private fun readWeather(base: TodayContext): TodayContext {
         val app = getApplication<Application>(); val fine = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED; val coarse = ContextCompat.checkSelfPermission(app, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (!fine && !coarse) return base.copy(weather = "Location permission needed")
@@ -65,8 +62,10 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
             if (runtime.snapshot().initState !is InitState.Ready) {
                 runtime.initialize()
             }
+            val liveContext = fetchLiveContext()
+            _state.value = _state.value.copy(context = liveContext)
             val previous = _state.value.recommendation?.itemIds?.toSet().orEmpty()
-            val (context, rec) = engine.recommend(previous)
+            val (context, rec) = engine.recommend(previous, liveContext)
             val items = rec.itemIds.mapNotNull { graph.wardrobeRepository.getItemById(it) }
             _state.value = DressMeState(context = context, recommendation = rec, items = items)
         }.onFailure { _state.value = _state.value.copy(loading = false, error = it.message ?: "Could not create an outfit") }
