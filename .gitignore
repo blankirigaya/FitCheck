@@ -1,0 +1,25 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Keystore (never commit secrets)
+*.jks
+*.keystore
+release.properties
+
+# Local large model files (acquired separately; do NOT commit binaries)
+app/src/main/assets/models/*.litertlm
+app/src/main/assets/models/*.task

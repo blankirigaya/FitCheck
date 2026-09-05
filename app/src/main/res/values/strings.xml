@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fit Check</string>
+    <string name="ai_lab_title">AI Lab</string>
+    <string name="ai_lab_subtitle">Local Gemma · offline</string>
+</resources>
