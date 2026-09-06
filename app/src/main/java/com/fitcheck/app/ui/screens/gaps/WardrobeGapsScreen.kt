@@ -78,11 +78,12 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
         val prompt = buildString {
             appendLine("You are FitCheck's wardrobe purchase planner.")
             appendLine("Look at the user's available wardrobe and suggest up to 3 specific clothing items to buy next.")
-            appendLine("Return ONLY a JSON array, with no markdown: [{\"category\":\"TOP|BOTTOM|SHOES|OUTERWEAR|ACCESSORY\",\"item\":\"specific item\",\"reason\":\"short reason\"}]")
-            appendLine("Do not repeat an item already owned. Choose varied, concrete items (for example: linen overshirt, brown loafers, knit tie), not category names alone. Do not include prices.")
+            appendLine("Return ONLY a JSON array, with no markdown: [{\"category\":\"TOP|BOTTOM|SHOES|OUTERWEAR|ACCESSORY\",\"item\":\"specific item\",\"newOutfits\":number,\"compatible\":number,\"reason\":\"short reason grounded in the wardrobe\"}]")
+            appendLine("Do not repeat an item already owned. Choose varied, concrete items (for example: denim jacket, linen shirt, cargo trousers, brown loafers, leather belt), not category names alone. Never suggest 'ethnic wear' as a whole category. Do not include prices.")
             appendLine("Respect the user's gender context: never suggest women's-only pieces such as a women's kurta, lehenga, or dress for a male profile. Use men's or gender-neutral alternatives when appropriate. Do not output a generic category as the item name.")
             appendLine("Available wardrobe:\n$wardrobe")
-            appendLine("Calculated gaps and outfit payoff:\n${calculated.joinToString("\n") { "${it.category}: +${it.newOutfits} outfits, ${it.compatible} compatible items" }}")
+            appendLine("Calculate the impact for each proposed item from the listed wardrobe. newOutfits must be the number of new complete combinations that item can enable; compatible must be the number of existing items it can realistically pair with. Do not copy the same numbers for different items.")
+            appendLine("Calculated gap baselines:\n${calculated.joinToString("\n") { "${it.category}: +${it.newOutfits} outfits, ${it.compatible} compatible items" }}")
             val profile = UserProfilePreferences.read(getApplication())
             appendLine("User context: age=${profile?.age ?: "unknown"}, gender=${profile?.gender ?: "unknown"}, profession=${profile?.profession ?: "unknown"}. Use respectfully.")
         }
@@ -96,37 +97,39 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
     private fun calculateGaps(items: List<WardrobeItemEntity>): List<WardrobeGap> {
         val available = items.filter { it.isAvailable }
         val counts = available.groupingBy { it.category }.eachCount()
-        return Category.entries.mapNotNull { category ->
+        return Category.entries.filterNot { it == Category.ETHNIC_WEAR }.map { category ->
             val count = counts[category] ?: 0
-            if (count >= 2) null else {
-                val tops = countsOf(available, Category.TOP)
-                val bottoms = countsOf(available, Category.BOTTOM)
-                val shoes = countsOf(available, Category.SHOES)
-                val coreOutfits = tops * bottoms * shoes
-                val newOutfits = when (category) {
+            val tops = countsOf(available, Category.TOP)
+            val bottoms = countsOf(available, Category.BOTTOM)
+            val shoes = countsOf(available, Category.SHOES)
+            val coreOutfits = tops * bottoms * shoes
+            val newOutfits = when (category) {
                     Category.TOP -> bottoms * shoes
                     Category.BOTTOM -> tops * shoes
                     Category.SHOES -> tops * bottoms
-                    Category.OUTERWEAR, Category.ACCESSORY, Category.ETHNIC_WEAR -> coreOutfits
+                    Category.OUTERWEAR -> tops * bottoms
+                    Category.ACCESSORY -> coreOutfits + countsOf(available, Category.ACCESSORY) * coreOutfits
+                    Category.ETHNIC_WEAR -> shoes * maxOf(1, bottoms)
                 }
-                val compatible = when (category) {
+            val compatible = when (category) {
                     Category.TOP -> bottoms + shoes
                     Category.BOTTOM -> tops + shoes
                     Category.SHOES -> tops + bottoms
-                    Category.OUTERWEAR, Category.ACCESSORY, Category.ETHNIC_WEAR -> tops + bottoms + shoes
+                    Category.OUTERWEAR -> tops + bottoms
+                    Category.ACCESSORY -> tops + bottoms + shoes
+                    Category.ETHNIC_WEAR -> shoes + bottoms
                 }
-                val priority = when {
+            val priority = when {
                     newOutfits >= 4 -> "High Priority"
                     newOutfits > 0 || compatible >= 2 -> "Medium Priority"
                     else -> "Low Priority"
                 }
-                val reason = when {
+            val reason = when {
                     count == 0 && newOutfits > 0 -> "Missing category with the strongest outfit payoff."
                     count == 0 -> "Missing category; add core pieces before expecting new complete outfits."
                     else -> "Adding a second option would increase wardrobe variety."
                 }
-                WardrobeGap(category.label(), category, priority, newOutfits, compatible, available.size, reason)
-            }
+            WardrobeGap(category.label(), category, priority, newOutfits, compatible, available.size, reason)
         }.sortedWith(compareByDescending<WardrobeGap> { it.newOutfits }
             .thenByDescending { it.compatible }
             .thenBy { it.category.ordinal })
@@ -144,10 +147,13 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
                 val base = calculated.firstOrNull { it.category == category } ?: continue
                 if (!used.add(category)) continue
                 val name = item.optString("item").trim().takeIf { it.isNotBlank() } ?: continue
+                if (isGenericSuggestion(name)) continue
                 val reason = item.optString("reason").trim().takeIf { it.isNotBlank() } ?: base.reason
                 val profile = UserProfilePreferences.read(getApplication())
                 if (profile?.gender.equals("Male", ignoreCase = true) && isWomenOnlySuggestion(name)) continue
-                add(base.copy(title = name, reason = reason))
+                val newOutfits = item.optInt("newOutfits", base.newOutfits).coerceAtLeast(0)
+                val compatible = item.optInt("compatible", base.compatible).coerceAtLeast(0)
+                add(base.copy(title = name, newOutfits = newOutfits, compatible = compatible, reason = reason))
             }
         }
         return (ai + calculated.filterNot { candidate -> ai.any { it.category == candidate.category } }).take(3)
@@ -157,6 +163,13 @@ class WardrobeGapsViewModel(app: Application) : AndroidViewModel(app) {
         val value = name.lowercase()
         return value.contains("women's") || value.contains("womens") || value.contains("women ") ||
             value.contains("female dress") || value.contains("lehenga")
+    }
+
+    private fun isGenericSuggestion(name: String): Boolean {
+        return name.lowercase().trim() in setOf(
+            "top", "tops", "bottom", "bottoms", "shoes", "shoe", "outerwear",
+            "accessory", "accessories", "ethnic wear", "ethnic", "clothing"
+        )
     }
 }
 
@@ -194,9 +207,8 @@ fun WardrobeGapsScreen(onBack: () -> Unit = {}, onOpenAnalysis: (WardrobeGap) ->
 
 @Composable private fun GapCard(gap: WardrobeGap, onExpand: () -> Unit) {
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Column { Text(gap.title, style = MaterialTheme.typography.titleMedium); Text("Price unavailable", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }; AssistChip(onClick = {}, label = { Text(gap.priority) }) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(gap.title, style = MaterialTheme.typography.titleMedium); AssistChip(onClick = {}, label = { Text(gap.priority) }) }
         Text("↗  +${gap.newOutfits} outfit combinations  ·  ${gap.compatible} wardrobe items can pair  ·  ${gap.wardrobeItemsUsed} available items analyzed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(gap.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = onExpand, modifier = Modifier.fillMaxWidth()) { Text("⌄  Expand details") }
     } }
 }

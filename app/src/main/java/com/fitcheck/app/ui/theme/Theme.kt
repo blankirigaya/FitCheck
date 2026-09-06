@@ -2,9 +2,12 @@ package com.fitcheck.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 
 private val LightColors = lightColorScheme(
     primary = Ink,
@@ -44,6 +47,12 @@ private val DarkColors = darkColorScheme(
     onError = NightInk
 )
 
+private val FitCheckShapes = Shapes(
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
+)
+
 @Composable
 fun FitCheckTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -52,6 +61,7 @@ fun FitCheckTheme(
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
         typography = FitCheckTypography,
+        shapes = FitCheckShapes,
         content = content
     )
 }

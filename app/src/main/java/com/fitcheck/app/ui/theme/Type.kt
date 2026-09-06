@@ -6,7 +6,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-private val Display = FontFamily.SansSerif
+// Fashion-editorial headings with a quiet sans-serif reading face. Keeping
+// both in the shared theme makes the app feel intentional without requiring
+// every screen to style text independently.
+private val Display = FontFamily.Serif
+private val Body = FontFamily.SansSerif
 
 val FitCheckTypography = Typography(
     displayLarge = TextStyle(
@@ -36,45 +40,45 @@ val FitCheckTypography = Typography(
         lineHeight = 22.sp
     ),
     titleMedium = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.SemiBold,
         fontSize = 15.sp,
         lineHeight = 20.sp
     ),
     bodyLarge = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp
     ),
     bodySmall = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
         lineHeight = 16.sp
     ),
     labelLarge = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 18.sp,
         letterSpacing = 0.2.sp
     ),
     labelMedium = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp,
         letterSpacing = 0.4.sp
     ),
     labelSmall = TextStyle(
-        fontFamily = Display,
+        fontFamily = Body,
         fontWeight = FontWeight.Medium,
         fontSize = 11.sp,
         lineHeight = 14.sp,

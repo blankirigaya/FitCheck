@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,6 +19,12 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) localPropertiesFile.inputStream().use(localProperties::load)
+        val pexelsApiKey = localProperties.getProperty("PEXELS_API_KEY", "")
+        buildConfigField("String", "PEXELS_API_KEY", "\"${pexelsApiKey.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     buildTypes {

@@ -30,6 +30,18 @@ data class OutfitRecommendation(
     val occasion: String
 )
 
+/** Hard safety check for occasion matching. Casual does not automatically mean gym-ready. */
+fun isSuitableForOccasion(item: WardrobeItemEntity, occasion: String): Boolean {
+    val normalized = occasion.lowercase()
+    if (!listOf("gym", "workout", "training", "running").any { normalized.contains(it) }) return true
+    val text = listOfNotNull(item.name, item.subcategory, item.style, item.material, item.fit, item.styleTags.joinToString(" "))
+        .joinToString(" ").lowercase()
+    val clearlyUnsuitable = listOf("turtle neck", "turtleneck", "dress shirt", "formal shirt", "blazer", "suit", "kurta", "saree", "jeans", "loafer")
+    if (clearlyUnsuitable.any { text.contains(it) }) return false
+    val activeSignals = listOf("gym", "workout", "training", "running", "active", "athletic", "sport", "stretch", "breathable", "moisture", "flexible", "sneaker", "trainer", "track", "jogger", "leggings", "performance", "jersey", "tank", "tee")
+    return activeSignals.any { text.contains(it) }
+}
+
 class ContextBuilder(private val profile: UserProfile? = null) {
     fun build(now: Long = System.currentTimeMillis()): TodayContext {
         val date = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(now))
@@ -71,9 +83,9 @@ class OutfitEngine(
     suspend fun recommend(previousIds: Set<Long> = emptySet(), liveContext: TodayContext? = null): Pair<TodayContext, OutfitRecommendation> {
         val context = liveContext ?: contextBuilder.build()
         val candidates = selector.select(wardrobe, wear)
-        val top = bestForOccasion(candidates, Category.TOP, context.occasion)
-        val bottom = bestForOccasion(candidates, Category.BOTTOM, context.occasion)
-        val shoes = bestForOccasion(candidates, Category.SHOES, context.occasion)
+        val top = bestForOccasion(candidates, Category.TOP, context.occasion, previousIds)
+        val bottom = bestForOccasion(candidates, Category.BOTTOM, context.occasion, previousIds)
+        val shoes = bestForOccasion(candidates, Category.SHOES, context.occasion, previousIds)
         val accessory = candidates.firstOrNull { it.category == Category.ACCESSORY }
         require(top != null && bottom != null && shoes != null) {
             "Add at least one top, bottom, and shoes to Dress Me Today."
@@ -93,8 +105,8 @@ class OutfitEngine(
     }
 
     private fun buildPrompt(context: TodayContext, items: List<WardrobeItemEntity>, prefs: StylePreferenceEntity, previous: Set<Long>): String = buildString {
-        appendLine("You are Fit Check's offline outfit stylist. Return ONLY this JSON: {\"itemIds\":[number,number,number,optionalAccessoryId],\"explanation\":\"one concise sentence\"}.")
-        appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item. Prefer items tagged ${context.occasion} for this time of day. Add at most one ACCESSORY only when it genuinely complements the look. Do not invent IDs. Avoid previous IDs: $previous.")
+        appendLine("You are Fit Check's offline outfit stylist. Return ONLY this JSON: {\"itemIds\":[number,number,number,optionalAccessoryId],\"explanation\":\"2 or 3 short sentences explaining the occasion, weather, color/style compatibility, and why any accessory helps\"}.")
+        appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item for the specific occasion '${context.occasion}'. For gym/workout, prioritize activewear, breathable or stretch materials, flexible fits, and athletic shoes. For college/campus, prioritize casual, comfortable, everyday, and versatile pieces. For professional/office, prioritize structured, polished, formal, or smart-casual pieces. For any other occasion, match the item's recorded style and formality to that occasion. Do not reuse the same outfit logic for every occasion. Add at most one ACCESSORY only when it genuinely complements the look. Do not invent IDs. Avoid previous IDs: $previous.")
         appendLine("Context: ${context.date}, ${context.time}, temperature=${context.temperatureC ?: "unknown"}°C, weather=${context.weather}, location=${context.location}, occasion=${context.occasion}.")
         appendLine("User context: age=${context.age ?: "unknown"}, gender=${context.gender ?: "unknown"}, profession=${context.profession ?: "unknown"}. Use this respectfully and do not stereotype.")
         appendLine("Preferred styles=${prefs.preferredStyles}, colors=${prefs.preferredColors}.")
@@ -117,11 +129,29 @@ class OutfitEngine(
         return selected.map { it.id }
     }
 
-    private fun bestForOccasion(items: List<WardrobeItemEntity>, category: Category, occasion: String): WardrobeItemEntity? {
-        return items.filter { it.category == category }.maxByOrNull { item ->
-            val text = listOfNotNull(item.subcategory, item.style, item.styleTags.joinToString(" ")).joinToString(" ").lowercase()
-            if (text.contains(occasion.lowercase())) 10 else 0
+    private fun bestForOccasion(items: List<WardrobeItemEntity>, category: Category, occasion: String, excluded: Set<Long> = emptySet()): WardrobeItemEntity? {
+        val eligible = items.filter { it.category == category && isSuitableForOccasion(it, occasion) }
+        val candidates = eligible.filterNot { it.id in excluded }.ifEmpty { eligible }
+        if (candidates.isEmpty()) return null
+        val normalized = occasion.lowercase()
+        fun score(item: WardrobeItemEntity): Int {
+            val text = listOfNotNull(item.name, item.subcategory, item.style, item.material, item.fit, item.styleTags.joinToString(" "))
+                .joinToString(" ").lowercase()
+            val terms = when {
+                listOf("gym", "workout", "training", "running").any { normalized.contains(it) } ->
+                    listOf("gym", "workout", "training", "running", "active", "athletic", "sport", "stretch", "breathable", "moisture", "flexible", "sneaker", "track")
+                listOf("college", "campus", "university", "school").any { normalized.contains(it) } ->
+                    listOf("college", "campus", "casual", "everyday", "comfortable", "versatile", "sneaker", "relaxed")
+                listOf("professional", "office", "work", "presentation", "interview").any { normalized.contains(it) } ->
+                    listOf("professional", "office", "work", "formal", "polished", "structured", "smart", "blazer", "loafer")
+                else -> normalized.split(Regex("\\s+"))
+            }
+            return terms.sumOf { term -> if (text.contains(term)) 1 else 0 }
         }
+        // Prefer an occasion match and avoid the previous outfit when possible.
+        val offset = normalized.hashCode().toLong().let { kotlin.math.abs(it) }
+        return candidates.maxWithOrNull(compareBy<WardrobeItemEntity> { score(it) }
+            .thenBy { (it.id + offset) % 997L })
     }
 }
 

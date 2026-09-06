@@ -6,7 +6,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Checkroom
+import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -57,25 +60,25 @@ fun FitCheckApp() {
                 NavigationBarItem(
                     selected = currentRoute == ROUTE_DRESS_ME,
                     onClick = { navController.navigate(ROUTE_DRESS_ME) { launchSingleTop = true } },
-                    icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = null) },
+                    icon = { Icon(Icons.Outlined.Checkroom, contentDescription = "Dress Me") },
                     label = { Text("Dress Me") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == ROUTE_WARDROBE,
                     onClick = { navController.navigate(ROUTE_WARDROBE) { launchSingleTop = true } },
-                    icon = { Icon(Icons.Outlined.GraphicEq, contentDescription = null) },
+                    icon = { Icon(Icons.Outlined.Inventory2, contentDescription = "Wardrobe") },
                     label = { Text("Wardrobe") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == ROUTE_STYLE,
                     onClick = { navController.navigate(ROUTE_STYLE) { launchSingleTop = true } },
-                    icon = { Text("✧") },
+                    icon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = "AI Stylist") },
                     label = { Text("AI Stylist") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == ROUTE_GAPS,
                     onClick = { navController.navigate(ROUTE_GAPS) { launchSingleTop = true } },
-                    icon = { Text("▣") },
+                    icon = { Icon(Icons.Outlined.CalendarMonth, contentDescription = "Plan") },
                     label = { Text("Plan") }
                 )
             }
