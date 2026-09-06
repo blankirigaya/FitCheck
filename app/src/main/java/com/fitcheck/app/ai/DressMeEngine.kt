@@ -10,6 +10,7 @@ import com.fitcheck.app.data.repository.WearRepository
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.Calendar
 
 data class TodayContext(
     val date: String,
@@ -33,7 +34,13 @@ class ContextBuilder(private val profile: UserProfile? = null) {
     fun build(now: Long = System.currentTimeMillis()): TodayContext {
         val date = SimpleDateFormat("EEE, d MMM", Locale.getDefault()).format(Date(now))
         val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(now))
-        return TodayContext(date = date, time = time, age = profile?.age, gender = profile?.gender, profession = profile?.profession)
+        val hour = Calendar.getInstance().apply { timeInMillis = now }.get(Calendar.HOUR_OF_DAY)
+        val occasion = when {
+            hour < 7 -> "Gym"
+            hour < 16 -> "Professional"
+            else -> "Casual"
+        }
+        return TodayContext(date = date, time = time, occasion = occasion, age = profile?.age, gender = profile?.gender, profession = profile?.profession)
     }
 }
 
@@ -64,9 +71,9 @@ class OutfitEngine(
     suspend fun recommend(previousIds: Set<Long> = emptySet(), liveContext: TodayContext? = null): Pair<TodayContext, OutfitRecommendation> {
         val context = liveContext ?: contextBuilder.build()
         val candidates = selector.select(wardrobe, wear)
-        val top = candidates.firstOrNull { it.category == Category.TOP }
-        val bottom = candidates.firstOrNull { it.category == Category.BOTTOM }
-        val shoes = candidates.firstOrNull { it.category == Category.SHOES }
+        val top = bestForOccasion(candidates, Category.TOP, context.occasion)
+        val bottom = bestForOccasion(candidates, Category.BOTTOM, context.occasion)
+        val shoes = bestForOccasion(candidates, Category.SHOES, context.occasion)
         val accessory = candidates.firstOrNull { it.category == Category.ACCESSORY }
         require(top != null && bottom != null && shoes != null) {
             "Add at least one top, bottom, and shoes to Dress Me Today."
@@ -87,7 +94,7 @@ class OutfitEngine(
 
     private fun buildPrompt(context: TodayContext, items: List<WardrobeItemEntity>, prefs: StylePreferenceEntity, previous: Set<Long>): String = buildString {
         appendLine("You are Fit Check's offline outfit stylist. Return ONLY this JSON: {\"itemIds\":[number,number,number,optionalAccessoryId],\"explanation\":\"one concise sentence\"}.")
-        appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item. Add at most one ACCESSORY only when it genuinely complements the look. Do not invent IDs. Avoid previous IDs: $previous.")
+        appendLine("Choose exactly one TOP, one BOTTOM, and one SHOES item. Prefer items tagged ${context.occasion} for this time of day. Add at most one ACCESSORY only when it genuinely complements the look. Do not invent IDs. Avoid previous IDs: $previous.")
         appendLine("Context: ${context.date}, ${context.time}, temperature=${context.temperatureC ?: "unknown"}°C, weather=${context.weather}, location=${context.location}, occasion=${context.occasion}.")
         appendLine("User context: age=${context.age ?: "unknown"}, gender=${context.gender ?: "unknown"}, profession=${context.profession ?: "unknown"}. Use this respectfully and do not stereotype.")
         appendLine("Preferred styles=${prefs.preferredStyles}, colors=${prefs.preferredColors}.")
@@ -108,6 +115,13 @@ class OutfitEngine(
         if (!selected.any { it.category == Category.TOP } || !selected.any { it.category == Category.BOTTOM } || !selected.any { it.category == Category.SHOES }) return null
         if (selected.count { it.category == Category.ACCESSORY } > 1 || selected.any { it.category !in setOf(Category.TOP, Category.BOTTOM, Category.SHOES, Category.ACCESSORY) }) return null
         return selected.map { it.id }
+    }
+
+    private fun bestForOccasion(items: List<WardrobeItemEntity>, category: Category, occasion: String): WardrobeItemEntity? {
+        return items.filter { it.category == category }.maxByOrNull { item ->
+            val text = listOfNotNull(item.subcategory, item.style, item.styleTags.joinToString(" ")).joinToString(" ").lowercase()
+            if (text.contains(occasion.lowercase())) 10 else 0
+        }
     }
 }
 

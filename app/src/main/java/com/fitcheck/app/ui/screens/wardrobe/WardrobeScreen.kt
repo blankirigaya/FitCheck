@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -34,11 +35,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fitcheck.app.data.DataGraph
+import com.fitcheck.app.data.UserProfilePreferences
 import com.fitcheck.app.data.local.entity.Category
 import com.fitcheck.app.data.local.entity.LaundryStatus
 import com.fitcheck.app.data.local.entity.WardrobeItemEntity
 import com.fitcheck.app.ai.AiRuntimeProvider
 import com.fitcheck.app.ai.ClothingVisionParser
+import com.fitcheck.app.ai.ClothingAttributes
 import com.fitcheck.app.ai.InitState
 import com.fitcheck.app.ai.removeBackground
 import java.io.File
@@ -60,11 +63,33 @@ class WardrobeViewModel(app: Application) : AndroidViewModel(app) {
                 val source = item.imageUri ?: error("A clothing photo is required.")
                 val localPath = copyToPrivateStorage(Uri.parse(source))
                 val cleanedPath = removeBackground(localPath) ?: localPath
-                val raw = runtime.analyzeImage(localPath, """
-                    Look at this clothing photo. Return ONLY JSON with keys name, category (TOP, BOTTOM, SHOES, OUTERWEAR, ACCESSORY, ETHNIC_WEAR), subcategory, color, material, fit, style, formality (1-5). Identify the single main clothing item. Use ACCESSORY for glasses, sunglasses, eyewear, watches, belts, bags, hats, scarves, jewelry, and other wearable add-ons. Use OUTERWEAR for jackets, coats, blazers, and overshirts. Use ETHNIC_WEAR for traditional clothing such as kurtas, sarees, sherwanis, lehengas, dhotis, and salwar suits.
-                """.trimIndent())
-                val attributes = ClothingVisionParser.parse(raw) ?: error("Gemma could not identify this clothing photo. Try a clearer photo.")
-                repo.insertItem(item.copy(imageUri = cleanedPath, name = attributes.name, category = attributes.category, subcategory = attributes.subcategory, color = attributes.color, material = attributes.material, fit = attributes.fit, style = attributes.style, formality = attributes.formality))
+                val profile = UserProfilePreferences.read(getApplication())
+                val subtypeHint = item.subcategory?.takeIf { it.isNotBlank() } ?: "not specified"
+                val raw = runCatching { runtime.analyzeImage(localPath, """
+                    Look at this clothing photo. Return ONLY JSON with keys name, category (TOP, BOTTOM, SHOES, OUTERWEAR, ACCESSORY, ETHNIC_WEAR), subcategory, color, material, fit, style, formality (1-5). Identify the single main clothing item. Use ACCESSORY for glasses, sunglasses, eyewear, watches, belts, bags, hats, scarves, bracelets, bangles, necklaces, jewelry, and other wearable add-ons. Use OUTERWEAR for jackets, coats, blazers, and overshirts. Use ETHNIC_WEAR for every traditional clothing type such as kurtas, kurtis, sarees, sherwanis, lehengas, dhotis, salwar suits, dupattas, and ethnic footwear.
+                    User profile gender=${profile?.gender ?: "unknown"}. The user's selected clothing subtype is "$subtypeHint". Preserve that subtype as the subcategory when specified.
+                    """.trimIndent()) }.getOrElse { error ->
+                    Log.w("FitCheck.ClothingVision", "Image analysis unavailable; saving captured photo with category hint", error)
+                    ""
+                }
+                val attributes = ClothingVisionParser.parse(raw) ?: run {
+                    // A photo that was captured and copied successfully must
+                    // not be lost just because a local model emitted prose
+                    // instead of the requested JSON. Keep the user-selected
+                    // hint as a safe classification and allow re-analysis.
+                    Log.w("FitCheck.ClothingVision", "Unparseable Gemma response: $raw")
+                    val fallbackName = item.name.takeUnless { it.isBlank() || it == "Analyzing…" }
+                        ?: when (item.category) {
+                            Category.TOP -> "Top"
+                            Category.BOTTOM -> "Bottom"
+                            Category.SHOES -> "Shoes"
+                            Category.OUTERWEAR -> "Outerwear"
+                            Category.ACCESSORY -> "Accessory"
+                            Category.ETHNIC_WEAR -> "Ethnic wear"
+                        }
+                    ClothingAttributes(fallbackName, item.category, item.subcategory, null, null, null, null, null)
+                }
+                repo.insertItem(item.copy(imageUri = cleanedPath, name = attributes.name, category = attributes.category, subcategory = item.subcategory ?: attributes.subcategory, color = attributes.color, material = attributes.material, fit = attributes.fit, style = attributes.style, formality = attributes.formality))
                 true
             }
             if (result) onResult(null)
@@ -154,8 +179,10 @@ private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSa
 }
 
 @Composable private fun AddItemDialog(onDismiss: () -> Unit, analyzing: Boolean, error: String?, onAdd: (WardrobeItemEntity) -> Unit) {
-    var name by remember { mutableStateOf("") }; var color by remember { mutableStateOf("") }; var size by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }; var imageUri by remember { mutableStateOf<String?>(null) }; var category by remember { mutableStateOf(Category.TOP) }
+    var name by remember { mutableStateOf("") }; var color by remember { mutableStateOf("") }; var size by remember { mutableStateOf("") }; var price by remember { mutableStateOf("") }; var imageUri by remember { mutableStateOf<String?>(null) }; var category by remember { mutableStateOf(Category.TOP) }; var subtype by remember { mutableStateOf("") }; var subtypeExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val isWomen = UserProfilePreferences.read(context)?.gender.equals("Female", ignoreCase = true)
+    val asksSubtype = isWomen && category in setOf(Category.TOP, Category.BOTTOM, Category.SHOES)
     var cameraUri by remember { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success) imageUri = cameraUri?.toString()
@@ -176,6 +203,10 @@ private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSa
     }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Add clothing") }, text = { Column(Modifier.heightIn(max = 470.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(onClick = { openCamera() }, modifier = Modifier.fillMaxWidth()) { Text(if (imageUri == null) "Take clothing photo (required)" else "Photo captured ✓") }
+        if (imageUri != null) {
+            LocalImage(imageUri, Modifier.fillMaxWidth().height(150.dp))
+            Text("Photo ready for AI analysis", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         OutlinedTextField(name, { name = it }, Modifier.fillMaxWidth(), label = { Text("Name (optional — Gemma identifies it)") }, singleLine = true)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { OutlinedTextField(size, { size = it }, Modifier.weight(1f), label = { Text("Size") }, singleLine = true); OutlinedTextField(price, { price = it }, Modifier.weight(1f), label = { Text("Cost") }, singleLine = true) }
         Text("Category hint (Gemma will verify)", style = MaterialTheme.typography.labelMedium)
@@ -184,8 +215,12 @@ private fun EditItemDialog(item: WardrobeItemEntity, onDismiss: () -> Unit, onSa
             val label = when (value) { Category.TOP -> "Top"; Category.BOTTOM -> "Bottom"; Category.SHOES -> "Shoes"; Category.OUTERWEAR -> "Outer"; Category.ACCESSORY -> "Access"; Category.ETHNIC_WEAR -> "Ethnic" }
             Button(onClick = { category = value }, modifier = Modifier.width(68.dp), contentPadding = PaddingValues(horizontal = 2.dp), colors = ButtonDefaults.buttonColors(containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall) }
         } }
+        if (asksSubtype) Box {
+            OutlinedButton(onClick = { subtypeExpanded = true }, modifier = Modifier.fillMaxWidth()) { Text(if (subtype.isBlank()) "Choose type: Gym, Casual, or Professional" else "Type: $subtype") }
+            DropdownMenu(expanded = subtypeExpanded, onDismissRequest = { subtypeExpanded = false }) { listOf("Gym", "Casual", "Professional").forEach { value -> DropdownMenuItem(text = { Text(value) }, onClick = { subtype = value; subtypeExpanded = false }) } }
+        }
         if (!error.isNullOrBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-    } }, confirmButton = { Button(enabled = imageUri != null && !analyzing, onClick = { onAdd(WardrobeItemEntity(name = name.ifBlank { "Analyzing…" }.trim(), category = category, size = size.ifBlank { null }, purchasePrice = price.toDoubleOrNull(), imageUri = imageUri)) }) { Text(if (analyzing) "Analyzing…" else "Analyze & add") } }, dismissButton = { TextButton(enabled = !analyzing, onClick = onDismiss) { Text("Cancel") } })
+    } }, confirmButton = { Button(enabled = imageUri != null && !analyzing && (!asksSubtype || subtype.isNotBlank()), onClick = { onAdd(WardrobeItemEntity(name = name.ifBlank { "Analyzing…" }.trim(), category = category, subcategory = subtype.ifBlank { null }, size = size.ifBlank { null }, purchasePrice = price.toDoubleOrNull(), imageUri = imageUri)) }) { Text(if (analyzing) "Analyzing…" else "Analyze & add") } }, dismissButton = { TextButton(enabled = !analyzing, onClick = onDismiss) { Text("Cancel") } })
 }
 
 @Composable private fun LocalImage(uri: String?, modifier: Modifier) {
