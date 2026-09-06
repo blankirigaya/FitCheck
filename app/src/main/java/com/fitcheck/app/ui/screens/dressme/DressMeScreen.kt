@@ -81,7 +81,7 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
         val cycle = recommendationCycle++
         val previousIds = _state.value.recommendation?.itemIds?.toSet().orEmpty()
         val coreFallback = listOf(Category.TOP, Category.BOTTOM, Category.SHOES).mapNotNull { category ->
-            chooseForOccasion(available.filter { it.category == category }, liveContext.occasion, cycle)
+            chooseForOccasion(available.filter { it.category == category }, liveContext.occasion, cycle, previousIds)
         }
         if (coreFallback.size != 3) {
             val isGym = liveContext.occasion.lowercase().let { it.contains("gym") || it.contains("workout") || it.contains("training") || it.contains("running") }
@@ -148,7 +148,7 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
         return "For ${context.occasion}, I chose $names. $occasionReason $weather. $palette supports the overall combination.$accessory"
     }
 
-    private fun chooseForOccasion(candidates: List<WardrobeItemEntity>, occasion: String, cycle: Int): WardrobeItemEntity? {
+    private fun chooseForOccasion(candidates: List<WardrobeItemEntity>, occasion: String, cycle: Int, excluded: Set<Long> = emptySet()): WardrobeItemEntity? {
         if (candidates.isEmpty()) return null
         val normalized = occasion.lowercase()
         val eligible = candidates.filter { isSuitableForOccasion(it, occasion) }
@@ -167,10 +167,12 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
                 .joinToString(" ").lowercase()
             return terms.sumOf { term -> if (text.contains(term)) 1 else 0 }
         }
-        val ranked = eligible.sortedWith(compareByDescending<WardrobeItemEntity> { score(it) }.thenBy { it.id })
-        val bestScore = score(ranked.first())
-        val best = ranked.filter { score(it) == bestScore }
-        return best[(kotlin.math.abs(normalized.hashCode()) + cycle) % best.size]
+        // Change Outfit must rotate the core pieces, not only the accessory.
+        // Prefer items not present in the previous recommendation when an
+        // alternative exists, then rotate through all suitable ranked items.
+        val fresh = eligible.filterNot { it.id in excluded }.ifEmpty { eligible }
+        val ranked = fresh.sortedWith(compareByDescending<WardrobeItemEntity> { score(it) }.thenBy { it.id })
+        return ranked[(kotlin.math.abs(normalized.hashCode()) + cycle) % ranked.size]
     }
     fun wear() = viewModelScope.launch {
         val rec = _state.value.recommendation ?: return@launch
@@ -188,7 +190,7 @@ class DressMeViewModel(app: Application) : AndroidViewModel(app) {
 }
 
 @Composable
-fun DressMeScreen(onToolClick: (String) -> Unit = {}, vm: DressMeViewModel = viewModel()) {
+fun DressMeScreen(onToolClick: (String) -> Unit = {}, onItemClick: (Long) -> Unit = {}, vm: DressMeViewModel = viewModel()) {
     val state by vm.state.collectAsStateWithLifecycle()
     var wardrobePreview by remember { mutableStateOf<List<WardrobeItemEntity>>(emptyList()) }
     var occasion by remember { mutableStateOf("") }
@@ -253,7 +255,7 @@ fun DressMeScreen(onToolClick: (String) -> Unit = {}, vm: DressMeViewModel = vie
         } else {
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Dress Me Today", style = MaterialTheme.typography.titleMedium); Text("✦ AI CHOICE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
-                if (state.items.isNotEmpty()) OutfitCollage(state.items) else Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                if (state.items.isNotEmpty()) OutfitCollage(state.items, onItemClick) else Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Why this works:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
                     IconButton(onClick = {
@@ -279,20 +281,20 @@ fun DressMeScreen(onToolClick: (String) -> Unit = {}, vm: DressMeViewModel = vie
     }
 }
 
-@Composable private fun OutfitCollage(items: List<WardrobeItemEntity>) {
+@Composable private fun OutfitCollage(items: List<WardrobeItemEntity>, onItemClick: (Long) -> Unit) {
     Row(Modifier.fillMaxWidth().height(235.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        OutfitTile(items.first(), Modifier.weight(1.35f).fillMaxHeight())
+        OutfitTile(items.first(), Modifier.weight(1.35f).fillMaxHeight(), onItemClick)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items.drop(1).take(2).forEach { OutfitTile(it, Modifier.weight(1f).fillMaxWidth()) }
+            items.drop(1).take(2).forEach { OutfitTile(it, Modifier.weight(1f).fillMaxWidth(), onItemClick) }
         }
         if (items.size > 3) Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items.drop(3).take(2).forEach { OutfitTile(it, Modifier.weight(1f).fillMaxWidth()) }
+            items.drop(3).take(2).forEach { OutfitTile(it, Modifier.weight(1f).fillMaxWidth(), onItemClick) }
         }
     }
 }
 
-@Composable private fun OutfitTile(item: WardrobeItemEntity, modifier: Modifier) {
-    Column(modifier) {
+@Composable private fun OutfitTile(item: WardrobeItemEntity, modifier: Modifier, onItemClick: (Long) -> Unit) {
+    Column(modifier.clickable { onItemClick(item.id) }) {
         LocalImage(item.imageUri, Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(12.dp)))
         Text(if (item.category == Category.ACCESSORY) "Accessory · ${item.name}" else item.name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
     }

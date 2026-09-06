@@ -89,11 +89,11 @@ fun FitCheckApp() {
             startDestination = ROUTE_DRESS_ME,
             modifier = Modifier.padding(padding)
         ) {
-            composable(ROUTE_HOME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else if (tool == "gaps") ROUTE_GAPS else ROUTE_STYLE) { launchSingleTop = true } }) }
-            composable(ROUTE_DRESS_ME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else if (tool == "gaps") ROUTE_GAPS else ROUTE_STYLE) { launchSingleTop = true } }) }
+            composable(ROUTE_HOME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else if (tool == "gaps") ROUTE_GAPS else ROUTE_STYLE) { launchSingleTop = true } }, onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
+            composable(ROUTE_DRESS_ME) { DressMeScreen(onToolClick = { tool -> navController.navigate(if (tool == "wardrobe") ROUTE_WARDROBE else if (tool == "gaps") ROUTE_GAPS else ROUTE_STYLE) { launchSingleTop = true } }, onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE) { WardrobeScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_WARDROBE_DETAIL) { entry -> WardrobeItemDetailScreen(itemId = entry.arguments?.getString("itemId")?.toLongOrNull() ?: 0L, onBack = { navController.popBackStack() }) }
-            composable(ROUTE_STYLE) { AiStylistScreen() }
+            composable(ROUTE_STYLE) { AiStylistScreen(onItemClick = { id -> navController.navigate("wardrobe_detail/$id") }) }
             composable(ROUTE_GAPS) { WardrobeGapsScreen(onBack = { navController.popBackStack() }, onOpenAnalysis = { gap -> navController.navigate("purchase/${gap.category.name}/${Uri.encode(gap.title)}?newOutfits=${gap.newOutfits}&compatible=${gap.compatible}&itemsUsed=${gap.wardrobeItemsUsed}&reason=${Uri.encode(gap.reason)}") }) }
             composable(ROUTE_PURCHASE) { entry -> PurchaseAnalysisScreen(
                 categoryName = entry.arguments?.getString("category") ?: "OUTERWEAR",

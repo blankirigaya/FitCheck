@@ -32,9 +32,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -50,28 +57,38 @@ import org.json.JSONObject
 
 data class StylistMessage(val text: String, val fromUser: Boolean, val itemIds: List<Long> = emptyList(), val attachment: String? = null)
 
+/** Keeps the chat when the user switches between bottom-navigation tabs. */
+private object StylistChatStore {
+    var messages: List<StylistMessage>? = null
+}
+
 class AiStylistViewModel(app: Application) : AndroidViewModel(app) {
     private val runtime = AiRuntimeProvider.get(app)
     private val wardrobe = DataGraph.get(app).wardrobeRepository
-    private val _messages = MutableStateFlow(listOf(StylistMessage("Tell me what you are dressing for and I’ll help you build a look from your wardrobe.", false)))
+    private val _messages = MutableStateFlow(StylistChatStore.messages ?: listOf(StylistMessage("Tell me what you are dressing for and I’ll help you build a look from your wardrobe.", false)))
     val messages = _messages.asStateFlow()
     var isThinking by mutableStateOf(false); private set
     fun send(text: String, attachment: String? = null) {
         val prompt = text.trim(); if (prompt.isEmpty() || isThinking) return
-        _messages.value = _messages.value + StylistMessage(if (attachment == null) prompt else prompt, true, attachment = attachment); isThinking = true
+        setMessages(_messages.value + StylistMessage(prompt, true, attachment = attachment)); isThinking = true
         viewModelScope.launch {
             runCatching {
                 if (runtime.snapshot().initState !is com.fitcheck.app.ai.InitState.Ready) runtime.initialize()
                 val availableItems = wardrobe.getAvailableItems()
-                val items = availableItems.take(24).joinToString { "${it.name} (${it.category}, ${it.color ?: "unknown color"})" }
+                val items = availableItems.take(24).joinToString { "${it.name} (${it.category}, ${it.color ?: "unknown color"}, tags=${it.styleTags.joinToString()}, fit=${it.fit ?: "unknown"}, formality=${it.formality ?: "unknown"})" }
                 val profile = UserProfilePreferences.read(getApplication())
                 val photoContext = attachment?.let { runCatching { runtime.analyzeImage(it, "Identify the clothing item in this photo. Return concise plain text with name, category, color, material, style, and outfit pairing notes.") }.getOrDefault("Photo attached; describe it from the visible image if possible.") } ?: "No photo attached."
                 val answer = runtime.generate("You are Fit Check AI Stylist. Be warm, concise, and practical. Reply in readable Markdown only, never JSON. Use short headings with **bold**, and bullet points with '-'. User says: $prompt. Wardrobe: $items. Attached photo analysis: $photoContext. User context: age=${profile?.age ?: "unknown"}, gender=${profile?.gender ?: "unknown"}, profession=${profile?.profession ?: "unknown"}. Use it respectfully and do not stereotype. Suggest choices and customization; never invent wardrobe item IDs.").foldToString()
                 val recommendationPhotos = availableItems.filter { it.imageUri != null }.sortedWith(compareBy { it.category.ordinal }).take(4).map { it.id }
-                _messages.value = _messages.value + StylistMessage(normalizeStylistResponse(answer), false, recommendationPhotos)
-            }.onFailure { _messages.value = _messages.value + StylistMessage(it.message ?: "I couldn’t reach the local stylist engine.", false) }
+                setMessages(_messages.value + StylistMessage(normalizeStylistResponse(answer), false, recommendationPhotos))
+            }.onFailure { setMessages(_messages.value + StylistMessage(it.message ?: "I couldn’t reach the local stylist engine.", false)) }
             isThinking = false
         }
+    }
+
+    private fun setMessages(value: List<StylistMessage>) {
+        _messages.value = value
+        StylistChatStore.messages = value
     }
 }
 
@@ -90,8 +107,9 @@ private fun normalizeStylistResponse(raw: String): String {
 }
 
 @Composable
-fun AiStylistScreen(vm: AiStylistViewModel = viewModel()) {
+fun AiStylistScreen(onItemClick: (Long) -> Unit = {}, vm: AiStylistViewModel = viewModel()) {
     val messages by vm.messages.collectAsStateWithLifecycle(); var input by remember { mutableStateOf("") }
+    val wardrobeItems by DataGraph.get(LocalContext.current).wardrobeRepository.observeAvailableItems().collectAsStateWithLifecycle(initialValue = emptyList())
     var attachment by remember { mutableStateOf<String?>(null) }
     var attachmentLabel by remember { mutableStateOf<String?>(null) }
     var showAttachMenu by remember { mutableStateOf(false) }
@@ -115,7 +133,7 @@ fun AiStylistScreen(vm: AiStylistViewModel = viewModel()) {
         Spacer(Modifier.height(12.dp)); Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text("✧ AI Stylist", style = MaterialTheme.typography.headlineLarge); Text("ACTIVE NOW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary) }
         Text("Your personal wardrobe assistant", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(12.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
-            items(messages) { message -> Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) { Surface(color = if (message.fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.widthIn(max = 320.dp)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { if (message.attachment != null) StylistLocalImage(message.attachment, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp))); MarkdownText(if (message.attachment != null) "📷  Clothing photo attached" else message.text, Modifier, if (message.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface); if (message.itemIds.isNotEmpty()) StylistRecommendationPhotos(message.itemIds) } } } }
+            items(messages) { message -> Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.fromUser) Arrangement.End else Arrangement.Start) { Surface(color = if (message.fromUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(16.dp), modifier = Modifier.widthIn(max = 320.dp)) { Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { if (message.attachment != null) { StylistLocalImage(message.attachment, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp))); Text("📷 Clothing photo attached", style = MaterialTheme.typography.labelMedium, color = if (message.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant) }; MarkdownText(message.text, Modifier, if (message.fromUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, wardrobeItems, onItemClick); if (message.itemIds.isNotEmpty()) StylistRecommendationPhotos(message.itemIds, onItemClick) } } } }
             if (vm.isThinking) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         }
         Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) { listOf("Date night", "Make it casual", "What matches?").forEach { suggestion -> AssistChip(onClick = { input = suggestion }, label = { Text(suggestion) }) } }
@@ -136,12 +154,12 @@ fun AiStylistScreen(vm: AiStylistViewModel = viewModel()) {
 }
 
 @Composable
-private fun StylistRecommendationPhotos(itemIds: List<Long>) {
+private fun StylistRecommendationPhotos(itemIds: List<Long>, onItemClick: (Long) -> Unit) {
     val items by DataGraph.get(LocalContext.current).wardrobeRepository.observeAvailableItems().collectAsStateWithLifecycle(initialValue = emptyList())
     val photos = itemIds.mapNotNull { id -> items.firstOrNull { it.id == id } }
     if (photos.isNotEmpty()) {
         Text("From your wardrobe", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { photos.forEach { item -> Column(Modifier.weight(1f)) { StylistLocalImage(item.imageUri, Modifier.fillMaxWidth().height(82.dp)); Text(item.name, maxLines = 1, style = MaterialTheme.typography.labelSmall) } } }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) { photos.forEach { item -> Column(Modifier.weight(1f).clickable { onItemClick(item.id) }) { StylistLocalImage(item.imageUri, Modifier.fillMaxWidth().height(82.dp)); Text(item.name, maxLines = 1, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) } } }
     }
 }
 
@@ -169,18 +187,46 @@ private fun StylistLocalImage(uri: String?, modifier: Modifier) {
     if (bitmap != null) Image(bitmap!!.asImageBitmap(), "Clothing photo", modifier, contentScale = ContentScale.Crop) else Surface(modifier, color = MaterialTheme.colorScheme.surfaceVariant) {}
 }
 
-@Composable private fun MarkdownText(value: String, modifier: Modifier, color: androidx.compose.ui.graphics.Color) {
+@Composable private fun MarkdownText(value: String, modifier: Modifier, color: androidx.compose.ui.graphics.Color, linkedItems: List<WardrobeItemEntity> = emptyList(), onItemClick: (Long) -> Unit = {}) {
+    val linkColor = MaterialTheme.colorScheme.primary
+    val inlineItems = mutableMapOf<String, WardrobeItemEntity>()
     val styled = buildAnnotatedString {
+        fun appendLinked(text: String) {
+            var cursor = 0
+            val names = linkedItems.filter { it.name.isNotBlank() }.distinctBy { it.name.lowercase() }.sortedByDescending { it.name.length }
+            while (cursor < text.length) {
+                val match = names.mapNotNull { item -> Regex(Regex.escape(item.name), RegexOption.IGNORE_CASE).find(text, cursor)?.let { item to it } }.minByOrNull { it.second.range.first }
+                if (match == null) { append(text.substring(cursor)); break }
+                val item = match.first; val range = match.second.range
+                append(text.substring(cursor, range.first))
+                val start = length
+                withStyle(androidx.compose.ui.text.SpanStyle(color = linkColor, fontWeight = FontWeight.Bold)) { append(text.substring(range)) }
+                addStringAnnotation("wardrobe", item.id.toString(), start, length)
+                if (!item.imageUri.isNullOrBlank()) {
+                    val imageId = "wardrobe-image-${item.id}-${inlineItems.size}"
+                    inlineItems[imageId] = item
+                    append(" ")
+                    appendInlineContent(imageId, "[photo]")
+                }
+                cursor = range.last + 1
+            }
+        }
         value.lines().forEachIndexed { index, line ->
             if (index > 0) append("\n")
             val content = line.removePrefix("* ").removePrefix("- ")
             if (line.startsWith("* ") || line.startsWith("- ")) append("• ")
             var cursor = 0
-            Regex("\\*\\*([^*]+)\\*\\*").findAll(content).forEach { match -> append(content.substring(cursor, match.range.first)); withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) { append(match.groupValues[1]) }; cursor = match.range.last + 1 }
-            append(content.substring(cursor))
+            Regex("\\*\\*([^*]+)\\*\\*").findAll(content).forEach { match -> appendLinked(content.substring(cursor, match.range.first)); withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) { appendLinked(match.groupValues[1]) }; cursor = match.range.last + 1 }
+            appendLinked(content.substring(cursor))
         }
     }
-    Text(styled, modifier, color = color, style = MaterialTheme.typography.bodyLarge)
+    var textLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val inlineContent = inlineItems.mapValues { (_, item) ->
+        androidx.compose.foundation.text.InlineTextContent(
+            Placeholder(20.sp, 20.sp, PlaceholderVerticalAlign.Center)
+        ) { StylistLocalImage(item.imageUri, Modifier.fillMaxSize().clip(RoundedCornerShape(5.dp)).clickable { onItemClick(item.id) }) }
+    }
+    Text(styled, modifier.pointerInput(styled) { detectTapGestures { position -> textLayout?.let { layout -> styled.getStringAnnotations("wardrobe", layout.getOffsetForPosition(position), layout.getOffsetForPosition(position)).firstOrNull()?.item?.toLongOrNull()?.let(onItemClick) } } }, color = color, style = MaterialTheme.typography.bodyLarge, inlineContent = inlineContent, onTextLayout = { textLayout = it })
 }
 
 private suspend fun kotlinx.coroutines.flow.Flow<String>.foldToString(): String { val text = StringBuilder(); collect { text.append(it) }; return text.toString() }
