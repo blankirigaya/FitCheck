@@ -85,6 +85,7 @@ class LiteRtLmRuntime(
                 }
 
                 val backend = chooseBackend()
+                Log.i(TAG, "initializing Gemma with preferred backend=${labelForBackend(backend)}")
                 val engineConfig = EngineConfig(
                     modelPath = info.absolutePath,
                     backend = backend,
